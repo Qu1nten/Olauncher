@@ -1,6 +1,7 @@
 package app.olauncher.ui
 
 import android.app.admin.DevicePolicyManager
+import android.appwidget.AppWidgetHost
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
@@ -109,6 +110,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
             // R.id.homeButtonRecents -> toggleHomeButtonRecents()
             R.id.autoShowKeyboard -> toggleKeyboardText()
             R.id.homeAppsNum -> showHomeAppsNumMenu(view)
+            R.id.homeWidgets -> viewModel.addHomeWidget.call()
             R.id.dailyWallpaperUrl -> requireContext().openUrl(prefs.dailyWallpaperUrl)
             R.id.dailyWallpaper -> toggleDailyWallpaperUpdate()
             R.id.alignment -> showAlignmentMenu(view)
@@ -152,6 +154,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
             }
 
             R.id.dailyWallpaper -> removeWallpaper()
+            R.id.homeWidgets -> removeAllWidgets()
             R.id.appThemeText -> showAppThemeMenu(view, showSystem = true)
             R.id.swipeLeftApp -> toggleSwipeLeft()
             R.id.swipeRightApp -> toggleSwipeRight()
@@ -171,6 +174,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         // Home button for recents feature disabled
         // binding.homeButtonRecents.setOnClickListener(this)
         binding.homeAppsNum.setOnClickListener(this)
+        binding.homeWidgets.setOnClickListener(this)
         binding.screenTimeOnOff.setOnClickListener(this)
         binding.dailyWallpaperUrl.setOnClickListener(this)
         binding.dailyWallpaper.setOnClickListener(this)
@@ -191,6 +195,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         binding.footer.setOnClickListener(this)
 
         binding.dailyWallpaper.setOnLongClickListener(this)
+        binding.homeWidgets.setOnLongClickListener(this)
         binding.alignment.setOnLongClickListener(this)
         binding.appThemeText.setOnLongClickListener(this)
         binding.swipeLeftApp.setOnLongClickListener(this)
@@ -225,6 +230,12 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
                 for (num in 0..8) menu.add(Menu.NONE, num, num, num.toString())
             }
         ) { item -> updateHomeAppsNum(item.itemId) }
+    }
+
+    private fun removeAllWidgets() {
+        AppWidgetHost(requireContext(), Constants.HOME_WIDGET_HOST_ID).deleteHost()
+        prefs.homeWidgets = emptyList()
+        requireContext().showToast(getString(R.string.widgets_removed))
     }
 
     private fun showDateTimeMenu(anchor: View) {

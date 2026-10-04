@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Home widget long press menu -->
+    <item name="widgetTaller" type="id" />
+    <item name="widgetShorter" type="id" />
+    <item name="widgetMoveUp" type="id" />
+    <item name="widgetMoveDown" type="id" />
+    <item name="widgetRemove" type="id" />
+</resources>

@@ -80,6 +80,12 @@ object Constants {
 
     const val REQUEST_CODE_ENABLE_ADMIN = 666
     const val REQUEST_CODE_LAUNCHER_SELECTOR = 678
+    const val REQUEST_CODE_BIND_WIDGET = 701
+    const val REQUEST_CODE_CONFIGURE_WIDGET = 702
+
+    const val HOME_WIDGET_HOST_ID = 1024
+    const val WIDGET_MIN_HEIGHT_DP = 48
+    const val WIDGET_HEIGHT_STEP_DP = 48
 
     const val HINT_RATE_US = 15
 

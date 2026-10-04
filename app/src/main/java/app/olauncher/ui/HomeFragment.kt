@@ -1,6 +1,7 @@
 package app.olauncher.ui
 
 import android.app.admin.DevicePolicyManager
+import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
@@ -10,10 +11,12 @@ import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.Menu
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.RequiresApi
@@ -28,6 +31,7 @@ import app.olauncher.MainViewModel
 import app.olauncher.R
 import app.olauncher.data.AppModel
 import app.olauncher.data.Constants
+import app.olauncher.data.HomeWidget
 import app.olauncher.data.Prefs
 import app.olauncher.databinding.FragmentHomeBinding
 import app.olauncher.helper.appUsagePermissionGranted
@@ -35,12 +39,15 @@ import app.olauncher.helper.dpToPx
 import app.olauncher.helper.expandNotificationDrawer
 import app.olauncher.helper.getChangedAppTheme
 import app.olauncher.helper.getUserHandleFromString
+import app.olauncher.helper.HomeWidgetHost
+import app.olauncher.helper.HomeWidgetHostView
 import app.olauncher.helper.isPackageInstalled
 import app.olauncher.helper.openAlarmApp
 import app.olauncher.helper.openCalendar
 import app.olauncher.helper.openCameraApp
 import app.olauncher.helper.openDialerApp
 import app.olauncher.helper.setPlainWallpaperByTheme
+import app.olauncher.helper.showPopupMenu
 import app.olauncher.helper.showToast
 import app.olauncher.listener.OnSwipeTouchListener
 import app.olauncher.listener.ViewSwipeTouchListener
@@ -53,6 +60,9 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private lateinit var prefs: Prefs
     private lateinit var viewModel: MainViewModel
     private lateinit var deviceManager: DevicePolicyManager
+    private lateinit var widgetHost: HomeWidgetHost
+    private lateinit var appWidgetManager: AppWidgetManager
+    private var shownWidgets: List<HomeWidget>? = null
 
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
@@ -70,11 +80,31 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         } ?: throw Exception("Invalid Activity")
 
         deviceManager = context?.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        widgetHost = HomeWidgetHost(requireContext().applicationContext)
+        appWidgetManager = AppWidgetManager.getInstance(requireContext())
 
         initObservers()
         setHomeAlignment(prefs.homeAlignment)
         initSwipeTouchListener()
         initClickListeners()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        try {
+            widgetHost.startListening()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    override fun onStop() {
+        try {
+            widgetHost.stopListening()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+        super.onStop()
     }
 
     override fun onResume() {
@@ -316,6 +346,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private fun populateHomeScreen(appCountUpdated: Boolean) {
         if (appCountUpdated) hideHomeApps()
         populateDateTime()
+        populateWidgets()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q)
             populateScreenTime()
@@ -376,6 +407,74 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         if (!setHomeAppText(binding.homeApp8, prefs.appName8, prefs.appPackage8, prefs.appUser8, prefs.isShortcut8, prefs.shortcutId8)) {
             prefs.appName8 = ""
             prefs.appPackage8 = ""
+        }
+    }
+
+    private fun populateWidgets() {
+        val widgets = prefs.homeWidgets
+        if (widgets == shownWidgets) return
+        shownWidgets = widgets
+
+        binding.widgetsLayout.removeAllViews()
+        val widthDp = resources.configuration.screenWidthDp - 48
+        for (widget in widgets) {
+            // Skip widgets whose app is gone or unavailable; they can be cleared from settings
+            val info = appWidgetManager.getAppWidgetInfo(widget.appWidgetId) ?: continue
+            val hostView = try {
+                widgetHost.createView(requireContext(), widget.appWidgetId, info) as HomeWidgetHostView
+            } catch (e: Exception) {
+                e.printStackTrace()
+                continue
+            }
+            hostView.onLongPress = { showWidgetMenu(hostView, widget) }
+            hostView.layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                widget.heightDp.dpToPx()
+            ).apply {
+                if (binding.widgetsLayout.childCount > 0) topMargin = 8.dpToPx()
+            }
+            hostView.updateSize(widthDp, widget.heightDp)
+            binding.widgetsLayout.addView(hostView)
+        }
+        binding.widgetsLayout.isVisible = binding.widgetsLayout.childCount > 0
+    }
+
+    private fun showWidgetMenu(anchor: View, widget: HomeWidget) {
+        val widgets = prefs.homeWidgets
+        val index = widgets.indexOfFirst { it.appWidgetId == widget.appWidgetId }
+        if (index == -1) return
+        val maxHeightDp = resources.configuration.screenHeightDp - 160
+
+        anchor.showPopupMenu(
+            configure = { menu ->
+                menu.add(Menu.NONE, R.id.widgetTaller, 0, R.string.widget_taller)
+                    .isEnabled = widget.heightDp < maxHeightDp
+                menu.add(Menu.NONE, R.id.widgetShorter, 1, R.string.widget_shorter)
+                    .isEnabled = widget.heightDp > Constants.WIDGET_MIN_HEIGHT_DP
+                if (index > 0) menu.add(Menu.NONE, R.id.widgetMoveUp, 2, R.string.move_up)
+                if (index < widgets.lastIndex) menu.add(Menu.NONE, R.id.widgetMoveDown, 3, R.string.move_down)
+                menu.add(Menu.NONE, R.id.widgetRemove, 4, R.string.remove_widget)
+            }
+        ) { item ->
+            val updated = widgets.toMutableList()
+            when (item.itemId) {
+                R.id.widgetTaller -> updated[index] = widget.copy(
+                    heightDp = (widget.heightDp + Constants.WIDGET_HEIGHT_STEP_DP).coerceAtMost(maxHeightDp)
+                )
+
+                R.id.widgetShorter -> updated[index] = widget.copy(
+                    heightDp = (widget.heightDp - Constants.WIDGET_HEIGHT_STEP_DP).coerceAtLeast(Constants.WIDGET_MIN_HEIGHT_DP)
+                )
+
+                R.id.widgetMoveUp -> updated.add(index - 1, updated.removeAt(index))
+                R.id.widgetMoveDown -> updated.add(index + 1, updated.removeAt(index))
+                R.id.widgetRemove -> {
+                    updated.removeAt(index)
+                    widgetHost.deleteAppWidgetId(widget.appWidgetId)
+                }
+            }
+            prefs.homeWidgets = updated
+            populateWidgets()
         }
     }
 
@@ -722,6 +821,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
     override fun onDestroyView() {
         super.onDestroyView()
+        shownWidgets = null
         _binding = null
     }
 }

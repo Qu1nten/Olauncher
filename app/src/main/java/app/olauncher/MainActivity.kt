@@ -2,6 +2,9 @@ package app.olauncher
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.appwidget.AppWidgetHost
+import android.appwidget.AppWidgetManager
+import android.appwidget.AppWidgetProviderInfo
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -12,9 +15,11 @@ import android.content.pm.ShortcutInfo
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.os.UserManager
 import android.provider.Settings
 import android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.lifecycle.ViewModelProvider
@@ -22,8 +27,10 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.findNavController
 import app.olauncher.data.Constants
+import app.olauncher.data.HomeWidget
 import app.olauncher.data.Prefs
 import app.olauncher.databinding.ActivityMainBinding
+import app.olauncher.helper.defaultHeightDp
 import app.olauncher.helper.getColorFromAttr
 import app.olauncher.helper.hasBeenDays
 import app.olauncher.helper.hasBeenHours
@@ -60,6 +67,7 @@ class MainActivity : AppCompatActivity() {
     private var profileReceiver: BroadcastReceiver? = null
     private var launcherAppsCallback: LauncherApps.Callback? = null
     private var messageDialog: OlDialog? = null
+    private var pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
 
 //    override fun onBackPressed() {
 //        if (navController.currentDestination?.id != R.id.mainFragment)
@@ -80,6 +88,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         if (prefs.boldFont) theme.applyStyle(R.style.BoldFontOverlay, true)
         if (isEinkDisplay() || isSystemAnimationsDisabled()) theme.applyStyle(R.style.NoAnimationOverlay, true)
+        pendingWidgetId = savedInstanceState?.getInt(KEY_PENDING_WIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+            ?: AppWidgetManager.INVALID_APPWIDGET_ID
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -123,6 +133,11 @@ class MainActivity : AppCompatActivity() {
             }
             registerReceiver(profileReceiver, filter)
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt(KEY_PENDING_WIDGET_ID, pendingWidgetId)
     }
 
     override fun onStart() {
@@ -209,6 +224,9 @@ class MainActivity : AppCompatActivity() {
         viewModel.checkForMessages.observe(this) {
             checkForMessages()
         }
+        viewModel.addHomeWidget.observe(this) {
+            showWidgetPicker()
+        }
         viewModel.showDialog.observe(this) {
             when (it) {
                 Constants.Dialog.ABOUT -> {
@@ -274,6 +292,97 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }
+    }
+
+    private fun showWidgetPicker() {
+        val appWidgetManager = AppWidgetManager.getInstance(this)
+        val profiles = getSystemService(UserManager::class.java).userProfiles
+        val providers = profiles
+            .flatMap { runCatching { appWidgetManager.getInstalledProvidersForProfile(it) }.getOrDefault(emptyList()) }
+            .map { it to widgetLabel(it) }
+            .sortedBy { it.second.lowercase() }
+        if (providers.isEmpty()) {
+            showToast(getString(R.string.no_widgets_found))
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle(R.string.choose_widget)
+            .setItems(providers.map { it.second }.toTypedArray()) { _, which ->
+                bindHomeWidget(providers[which].first)
+            }
+            .show()
+    }
+
+    private fun widgetLabel(info: AppWidgetProviderInfo): String {
+        val appName = runCatching {
+            packageManager.getApplicationLabel(
+                packageManager.getApplicationInfo(info.provider.packageName, 0)
+            ).toString()
+        }.getOrDefault(info.provider.packageName)
+        val widgetName = info.loadLabel(packageManager).orEmpty()
+        val size = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && info.targetCellWidth > 0 && info.targetCellHeight > 0)
+            " (${info.targetCellWidth}×${info.targetCellHeight})"
+        else ""
+        return if (widgetName.isBlank() || widgetName == appName) "$appName$size" else "$appName: $widgetName$size"
+    }
+
+    private fun bindHomeWidget(info: AppWidgetProviderInfo) {
+        val appWidgetManager = AppWidgetManager.getInstance(this)
+        pendingWidgetId = AppWidgetHost(this, Constants.HOME_WIDGET_HOST_ID).allocateAppWidgetId()
+        if (appWidgetManager.bindAppWidgetIdIfAllowed(pendingWidgetId, info.profile, info.provider, null)) {
+            configureHomeWidget(pendingWidgetId)
+            return
+        }
+        // Ask the user to allow Olauncher to create widgets
+        val intent = Intent(AppWidgetManager.ACTION_APPWIDGET_BIND).apply {
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, pendingWidgetId)
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER, info.provider)
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_PROVIDER_PROFILE, info.profile)
+        }
+        try {
+            @Suppress("DEPRECATION")
+            startActivityForResult(intent, Constants.REQUEST_CODE_BIND_WIDGET)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            cancelPendingWidget()
+        }
+    }
+
+    private fun configureHomeWidget(appWidgetId: Int) {
+        val info = AppWidgetManager.getInstance(this).getAppWidgetInfo(appWidgetId)
+        if (info == null) {
+            cancelPendingWidget()
+            return
+        }
+        val configurationOptional = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                info.widgetFeatures and AppWidgetProviderInfo.WIDGET_FEATURE_CONFIGURATION_OPTIONAL != 0
+        if (info.configure == null || configurationOptional) {
+            saveHomeWidget(appWidgetId)
+            return
+        }
+        try {
+            AppWidgetHost(this, Constants.HOME_WIDGET_HOST_ID).startAppWidgetConfigureActivityForResult(
+                this, appWidgetId, 0, Constants.REQUEST_CODE_CONFIGURE_WIDGET, null
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+            cancelPendingWidget()
+        }
+    }
+
+    private fun saveHomeWidget(appWidgetId: Int) {
+        pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+        val info = AppWidgetManager.getInstance(this).getAppWidgetInfo(appWidgetId) ?: return
+        prefs.homeWidgets += HomeWidget(appWidgetId, info.defaultHeightDp(this))
+        backToHomeScreen()
+        viewModel.refreshHome(false)
+    }
+
+    private fun cancelPendingWidget(showError: Boolean = true) {
+        if (pendingWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID)
+            AppWidgetHost(this, Constants.HOME_WIDGET_HOST_ID).deleteAppWidgetId(pendingWidgetId)
+        pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+        if (showError) showToast(getString(R.string.widget_add_failed))
     }
 
     private fun showMessage(title: Int, message: Int, action: Int, clickListener: () -> Unit) {
@@ -398,6 +507,10 @@ class MainActivity : AppCompatActivity() {
         super.onDestroy()
     }
 
+    companion object {
+        private const val KEY_PENDING_WIDGET_ID = "pending_widget_id"
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -410,6 +523,16 @@ class MainActivity : AppCompatActivity() {
             Constants.REQUEST_CODE_LAUNCHER_SELECTOR -> {
                 if (resultCode == Activity.RESULT_OK)
                     resetLauncherViaFakeActivity()
+            }
+
+            Constants.REQUEST_CODE_BIND_WIDGET -> {
+                if (resultCode == Activity.RESULT_OK) configureHomeWidget(pendingWidgetId)
+                else cancelPendingWidget(showError = false)
+            }
+
+            Constants.REQUEST_CODE_CONFIGURE_WIDGET -> {
+                if (resultCode == Activity.RESULT_OK) saveHomeWidget(pendingWidgetId)
+                else cancelPendingWidget(showError = false)
             }
         }
     }

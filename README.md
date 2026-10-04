@@ -14,6 +14,10 @@ AF stands for Ad-Free! :D
     alt="Get it on IzzyOnDroid"
     height="54" hspace="13" align="middle">](https://apt.izzysoft.de/packages/app.olauncher)
 
+> **This fork adds widgets to the home screen.** Open settings (long press on the home screen) → Home screen → Widgets → **Add**.
+> Long press a widget to make it taller or shorter, move it, or remove it. Long press **Add** to remove all widgets.
+> Set "Apps on home screen" to 0 if you only want widgets. Every push builds a debug APK under the repo's **Actions** tab.
+
 ### Install using [Play Store](https://play.google.com/store/apps/details?id=app.olauncher), [F-Droid](https://f-droid.org/packages/app.olauncher), [IzzyOnDroid](https://apt.izzysoft.de/packages/app.olauncher) or the [latest APK](https://github.com/tanujnotes/Olauncher/releases/).
 
 - To maintain the simplicity of the launcher, a few niche features are available but hidden.

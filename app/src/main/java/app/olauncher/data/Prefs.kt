@@ -42,6 +42,7 @@ class Prefs(context: Context) {
     private val SCREEN_TIME_LAST_UPDATED = "SCREEN_TIME_LAST_UPDATED"
     private val LAUNCHER_RESTART_TIMESTAMP = "LAUNCHER_RECREATE_TIMESTAMP"
     private val SHOWN_ON_DAY_OF_YEAR = "SHOWN_ON_DAY_OF_YEAR"
+    private val HOME_WIDGETS = "HOME_WIDGETS"
     // Home button for recents feature disabled
     // private val HOME_BUTTON_SHOW_RECENTS = "HOME_BUTTON_SHOW_RECENTS"
 
@@ -163,6 +164,20 @@ class Prefs(context: Context) {
     var homeAppsNum: Int
         get() = prefs.getInt(HOME_APPS_NUM, 4)
         set(value) = prefs.edit { putInt(HOME_APPS_NUM, value).apply() }
+
+    // Stored top to bottom as "appWidgetId:heightDp" entries separated by ';'
+    var homeWidgets: List<HomeWidget>
+        get() = prefs.getString(HOME_WIDGETS, "").orEmpty()
+            .split(";")
+            .mapNotNull { entry ->
+                val parts = entry.split(":")
+                val id = parts.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
+                val height = parts.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
+                HomeWidget(id, height)
+            }
+        set(value) = prefs.edit {
+            putString(HOME_WIDGETS, value.joinToString(";") { "${it.appWidgetId}:${it.heightDp}" })
+        }
 
     var homeAlignment: Int
         get() = prefs.getInt(HOME_ALIGNMENT, Gravity.START)

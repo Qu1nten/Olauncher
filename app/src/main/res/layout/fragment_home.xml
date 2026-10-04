@@ -83,6 +83,14 @@
         android:paddingTop="112dp"
         android:paddingBottom="48dp">
 
+        <!-- Home widgets, added from settings. Long press a widget to resize, move or remove it -->
+        <LinearLayout
+            android:id="@+id/widgetsLayout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone" />
+
         <TextView
             android:id="@+id/homeApp1"
             style="@style/TextLarge"
