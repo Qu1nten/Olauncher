@@ -15,11 +15,9 @@ import android.content.pm.ShortcutInfo
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
-import android.os.UserManager
 import android.provider.Settings
 import android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 import androidx.activity.OnBackPressedCallback
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.lifecycle.ViewModelProvider
@@ -51,6 +49,7 @@ import app.olauncher.helper.shareApp
 import app.olauncher.helper.showLauncherSelector
 import app.olauncher.helper.showMessageDialog
 import app.olauncher.helper.showToast
+import app.olauncher.helper.showWidgetPicker
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -225,7 +224,7 @@ class MainActivity : AppCompatActivity() {
             checkForMessages()
         }
         viewModel.addHomeWidget.observe(this) {
-            showWidgetPicker()
+            openWidgetPicker()
         }
         viewModel.showDialog.observe(this) {
             when (it) {
@@ -294,36 +293,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showWidgetPicker() {
-        val appWidgetManager = AppWidgetManager.getInstance(this)
-        val profiles = getSystemService(UserManager::class.java).userProfiles
-        val providers = profiles
-            .flatMap { runCatching { appWidgetManager.getInstalledProvidersForProfile(it) }.getOrDefault(emptyList()) }
-            .map { it to widgetLabel(it) }
-            .sortedBy { it.second.lowercase() }
-        if (providers.isEmpty()) {
+    private fun openWidgetPicker() {
+        if (showWidgetPicker { bindHomeWidget(it) } == null)
             showToast(getString(R.string.no_widgets_found))
-            return
-        }
-        AlertDialog.Builder(this)
-            .setTitle(R.string.choose_widget)
-            .setItems(providers.map { it.second }.toTypedArray()) { _, which ->
-                bindHomeWidget(providers[which].first)
-            }
-            .show()
-    }
-
-    private fun widgetLabel(info: AppWidgetProviderInfo): String {
-        val appName = runCatching {
-            packageManager.getApplicationLabel(
-                packageManager.getApplicationInfo(info.provider.packageName, 0)
-            ).toString()
-        }.getOrDefault(info.provider.packageName)
-        val widgetName = info.loadLabel(packageManager).orEmpty()
-        val size = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && info.targetCellWidth > 0 && info.targetCellHeight > 0)
-            " (${info.targetCellWidth}×${info.targetCellHeight})"
-        else ""
-        return if (widgetName.isBlank() || widgetName == appName) "$appName$size" else "$appName: $widgetName$size"
     }
 
     private fun bindHomeWidget(info: AppWidgetProviderInfo) {

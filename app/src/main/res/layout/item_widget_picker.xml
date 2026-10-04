@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One widget in the widget picker: its preview with the name and size below -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:focusable="true"
+    android:orientation="vertical"
+    android:paddingVertical="8dp">
+
+    <FrameLayout
+        android:id="@+id/previewContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/bg_widget_preview"
+        android:minHeight="64dp"
+        android:padding="8dp" />
+
+    <TextView
+        android:id="@+id/tvWidgetLabel"
+        style="@style/TextSmall"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingTop="6dp"
+        android:textColor="?attr/primaryColor"
+        android:textSize="15sp"
+        tools:text="Digital clock (2×1)" />
+</LinearLayout>

@@ -85,7 +85,7 @@ object Constants {
 
     const val HOME_WIDGET_HOST_ID = 1024
     const val WIDGET_MIN_HEIGHT_DP = 48
-    const val WIDGET_HEIGHT_STEP_DP = 48
+    const val WIDGET_MIN_WIDTH_DP = 72
 
     const val HINT_RATE_US = 15
 

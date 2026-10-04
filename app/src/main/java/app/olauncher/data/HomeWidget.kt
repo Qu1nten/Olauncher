@@ -4,4 +4,6 @@ package app.olauncher.data
 data class HomeWidget(
     val appWidgetId: Int,
     val heightDp: Int,
+    // 0 means the full width of the home screen
+    val widthDp: Int = 0,
 )
