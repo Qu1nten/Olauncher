@@ -86,6 +86,8 @@ object Constants {
     const val HOME_WIDGET_HOST_ID = 1024
     const val WIDGET_MIN_HEIGHT_DP = 48
     const val WIDGET_MIN_WIDTH_DP = 72
+    // Where the first widget goes: just below the clock
+    const val WIDGET_FIRST_TOP_DP = 160
 
     const val HINT_RATE_US = 15
 

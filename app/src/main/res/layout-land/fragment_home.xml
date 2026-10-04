@@ -83,14 +83,6 @@
         android:orientation="vertical"
         android:paddingVertical="@dimen/home_app_padding_vertical">
 
-        <!-- Home widgets, added from settings. Long press a widget to resize, move or remove it -->
-        <LinearLayout
-            android:id="@+id/widgetsLayout"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:visibility="gone" />
-
         <TextView
             android:id="@+id/homeApp1"
             style="@style/TextLarge"
@@ -188,6 +180,15 @@
             tools:visibility="visible" />
 
     </LinearLayout>
+
+    <!-- Home widgets, added from settings, each placed at its own height on the screen.
+         Long press a widget to move, resize or remove it -->
+    <FrameLayout
+        android:id="@+id/widgetsLayout"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:paddingHorizontal="74dp"
+        android:visibility="gone" />
 
     <TextView
         android:id="@+id/firstRunTips"

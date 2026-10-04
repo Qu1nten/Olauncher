@@ -15,7 +15,8 @@ AF stands for Ad-Free! :D
     height="54" hspace="13" align="middle">](https://apt.izzysoft.de/packages/app.olauncher)
 
 > **This fork adds widgets to the home screen.** Open settings (long press on the home screen) → Home screen → Widgets → **Add**.
-> Long press a widget to make it taller or shorter, move it, or remove it. Long press **Add** to remove all widgets.
+> Hold a widget and drag to place it anywhere up or down the screen. Once selected, drag its edge handles to resize it and use the Corners slider to round it. Long press **Add** to remove all widgets.
+> Settings → Appearance → Font picks a custom .ttf/.otf font for the whole launcher.
 > Set "Apps on home screen" to 0 if you only want widgets.
 > Download the latest APK: [olauncher-widgets.apk](https://github.com/Qu1nten/olauncher/releases/latest/download/olauncher-widgets.apk) (rebuilt on every push to master).
 

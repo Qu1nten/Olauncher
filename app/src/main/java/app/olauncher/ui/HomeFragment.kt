@@ -18,7 +18,6 @@ import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.view.WindowInsets
 import android.widget.FrameLayout
-import android.widget.LinearLayout
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
@@ -94,10 +93,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
         deviceManager = context?.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
         widgetHost = HomeWidgetHost(requireContext().applicationContext)
-        // Let a dragged widget show outside the widget area instead of being cut off
-        binding.widgetsLayout.clipChildren = false
-        binding.homeAppsLayout.clipChildren = false
-        binding.homeAppsLayout.clipToPadding = false
         appWidgetManager = AppWidgetManager.getInstance(requireContext())
 
         initObservers()
@@ -441,7 +436,8 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         binding.widgetsLayout.removeAllViews()
         widgetViews.clear()
         editViews = emptyList()
-        for (widget in state.first) {
+        val widgets = placeNewWidgets(state.first)
+        for (widget in widgets) {
             // Skip widgets whose app is gone or unavailable; they can be cleared from settings
             val info = appWidgetManager.getAppWidgetInfo(widget.appWidgetId) ?: continue
             val hostView = try {
@@ -459,13 +455,11 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
             val frame = FrameLayout(requireContext())
             frame.addView(hostView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-            frame.layoutParams = LinearLayout.LayoutParams(
-                if (widget.widthDp > 0) widget.widthDp.dpToPx() else LinearLayout.LayoutParams.MATCH_PARENT,
-                widget.heightDp.dpToPx()
-            ).apply {
-                gravity = prefs.homeAlignment
-                if (binding.widgetsLayout.childCount > 0) topMargin = 8.dpToPx()
-            }
+            frame.layoutParams = FrameLayout.LayoutParams(
+                if (widget.widthDp > 0) widget.widthDp.dpToPx() else FrameLayout.LayoutParams.MATCH_PARENT,
+                widget.heightDp.dpToPx(),
+                (prefs.homeAlignment and Gravity.RELATIVE_HORIZONTAL_GRAVITY_MASK) or Gravity.TOP
+            ).apply { topMargin = widget.topDp.dpToPx() }
             setWidgetCorners(frame, widget.cornerPercent)
             binding.widgetsLayout.addView(frame)
             widgetViews += WidgetViews(widget.appWidgetId, frame, hostView)
@@ -474,8 +468,29 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         binding.widgetsLayout.isVisible = binding.widgetsLayout.childCount > 0
     }
 
+    // Gives widgets that have no position yet one below the lowest widget, and saves it
+    private fun placeNewWidgets(widgets: List<HomeWidget>): List<HomeWidget> {
+        if (widgets.none { it.topDp < 0 }) return widgets
+        val areaHeightDp = widgetAreaHeightPx().pxToDp()
+        var nextTopDp = widgets.filter { it.topDp >= 0 }.maxOfOrNull { it.topDp + it.heightDp + 8 }
+            ?: Constants.WIDGET_FIRST_TOP_DP
+        val placed = widgets.map { widget ->
+            if (widget.topDp >= 0) return@map widget
+            val topDp = nextTopDp.coerceAtMost(areaHeightDp - widget.heightDp).coerceAtLeast(0)
+            nextTopDp = topDp + widget.heightDp + 8
+            widget.copy(topDp = topDp)
+        }
+        prefs.homeWidgets = placed
+        shownWidgets = placed to editingWidgetId
+        return placed
+    }
+
+    private fun widgetAreaHeightPx(): Int =
+        binding.widgetsLayout.height.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
+
     private fun fullWidgetWidthPx(): Int =
-        binding.widgetsLayout.width.takeIf { it > 0 } ?: (resources.configuration.screenWidthDp - 48).dpToPx()
+        (binding.widgetsLayout.width - binding.widgetsLayout.paddingLeft - binding.widgetsLayout.paddingRight)
+            .takeIf { it > 0 } ?: (resources.configuration.screenWidthDp - 48).dpToPx()
 
     private fun fullWidgetWidthDp(): Int = fullWidgetWidthPx().pxToDp()
 
@@ -524,8 +539,28 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         val overlay = createResizeOverlay(views, widget)
         views.frame.addView(overlay, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         val bar = createWidgetEditBar(views, widget)
-        binding.widgetsLayout.addView(bar, binding.widgetsLayout.indexOfChild(views.frame) + 1)
+        binding.widgetsLayout.addView(bar)
         editViews = listOf(overlay, bar)
+        positionEditBar(views.frame)
+    }
+
+    // Keeps the edit bar just below the widget, or above it when there's no room below
+    private fun positionEditBar(frame: View) {
+        val bar = editViews.lastOrNull() ?: return
+        val params = frame.layoutParams as FrameLayout.LayoutParams
+        bar.measure(
+            View.MeasureSpec.makeMeasureSpec(fullWidgetWidthPx(), View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
+        )
+        val gap = 4.dpToPx()
+        val below = params.topMargin + params.height + gap
+        val top = if (below + bar.measuredHeight <= widgetAreaHeightPx()) below
+        else (params.topMargin - bar.measuredHeight - gap).coerceAtLeast(0)
+        bar.layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = top }
+        bar.translationY = 0f
     }
 
     private fun createResizeOverlay(views: WidgetViews, widget: HomeWidget): WidgetResizeOverlay {
@@ -546,18 +581,19 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             // Centered widgets grow on both sides, so the handle only covers half the change
             val widthFactor = if (prefs.homeAlignment == Gravity.CENTER) 2 else 1
             val maxHeight = (resources.configuration.screenHeightDp - 160).dpToPx()
-            frame.layoutParams = (frame.layoutParams as LinearLayout.LayoutParams).apply {
+            frame.layoutParams = (frame.layoutParams as FrameLayout.LayoutParams).apply {
                 width = (startWidth + growWidth * widthFactor).roundToInt()
                     .coerceIn(Constants.WIDGET_MIN_WIDTH_DP.dpToPx(), fullWidgetWidthPx())
                 height = (startHeight + growHeight).roundToInt()
                     .coerceIn(Constants.WIDGET_MIN_HEIGHT_DP.dpToPx(), maxHeight)
             }
+            positionEditBar(frame)
         }
         overlay.onResizeEnd = {
-            val params = frame.layoutParams as LinearLayout.LayoutParams
+            val params = frame.layoutParams as FrameLayout.LayoutParams
             // Close to full width snaps to full width, so it keeps filling the screen
             val fullWidth = params.width >= fullWidgetWidthPx() - 8.dpToPx()
-            if (fullWidth) params.width = LinearLayout.LayoutParams.MATCH_PARENT
+            if (fullWidth) params.width = FrameLayout.LayoutParams.MATCH_PARENT
             frame.layoutParams = params
 
             val widthDp = if (fullWidth) 0 else params.width.pxToDp()
@@ -606,30 +642,28 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     // Moves the widget (and its edit bar) with the finger, above the other widgets
     private fun dragWidget(appWidgetId: Int, dy: Float) {
         val views = widgetViews.find { it.appWidgetId == appWidgetId } ?: return
-        views.frame.translationY = dy
+        val offset = clampedWidgetTop(views.frame, dy) - (views.frame.layoutParams as FrameLayout.LayoutParams).topMargin
+        views.frame.translationY = offset
         views.frame.translationZ = 8.dpToPx().toFloat()
-        editViews.lastOrNull()?.translationY = dy
+        editViews.lastOrNull()?.translationY = offset
     }
 
-    // Drops the widget between the widgets its center ended up between
+    // Leaves the widget where it was dropped
     private fun dropWidget(appWidgetId: Int, dy: Float) {
         val views = widgetViews.find { it.appWidgetId == appWidgetId } ?: return
+        val top = clampedWidgetTop(views.frame, dy).roundToInt()
         views.frame.translationY = 0f
         views.frame.translationZ = 0f
-        editViews.lastOrNull()?.translationY = 0f
+        views.frame.layoutParams = (views.frame.layoutParams as FrameLayout.LayoutParams).apply { topMargin = top }
+        positionEditBar(views.frame)
+        updateWidget(appWidgetId) { it.copy(topDp = top.pxToDp()) }
+    }
 
-        val center = views.frame.top + dy + views.frame.height / 2f
-        val widgets = prefs.homeWidgets
-        val dragged = widgets.find { it.appWidgetId == appWidgetId } ?: return
-        val others = widgets - dragged
-        val lastAbove = widgetViews
-            .filter { it !== views && it.frame.top + it.frame.height / 2f < center }
-            .maxByOrNull { it.frame.top }
-        val insertAt = lastAbove?.let { above -> others.indexOfFirst { it.appWidgetId == above.appWidgetId } + 1 } ?: 0
-        val reordered = others.toMutableList().apply { add(insertAt, dragged) }
-        if (reordered == widgets) return
-        prefs.homeWidgets = reordered
-        populateWidgets()
+    // Where the widget's top ends up after moving it by dy, kept on screen
+    private fun clampedWidgetTop(frame: View, dy: Float): Float {
+        val params = frame.layoutParams as FrameLayout.LayoutParams
+        val maxTop = (widgetAreaHeightPx() - params.height).coerceAtLeast(0)
+        return (params.topMargin + dy).coerceIn(0f, maxTop.toFloat())
     }
 
     private fun setHomeAppText(

@@ -8,4 +8,6 @@ data class HomeWidget(
     val widthDp: Int = 0,
     // 0 is square corners, 100 rounds the shorter sides into a full half circle
     val cornerPercent: Int = 0,
+    // Distance from the top of the screen; negative until placed, then it's put below the other widgets
+    val topDp: Int = -1,
 )
