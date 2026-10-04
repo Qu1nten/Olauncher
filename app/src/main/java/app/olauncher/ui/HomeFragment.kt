@@ -421,7 +421,9 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             // Skip widgets whose app is gone or unavailable; they can be cleared from settings
             val info = appWidgetManager.getAppWidgetInfo(widget.appWidgetId) ?: continue
             val hostView = try {
-                widgetHost.createView(requireContext(), widget.appWidgetId, info) as HomeWidgetHostView
+                // Not the activity context: its AppCompat inflater swaps in views RemoteViews can't drive,
+                // which makes every widget show "Couldn't add widget"
+                widgetHost.createView(requireContext().applicationContext, widget.appWidgetId, info) as HomeWidgetHostView
             } catch (e: Exception) {
                 e.printStackTrace()
                 continue
