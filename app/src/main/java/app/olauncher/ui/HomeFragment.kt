@@ -442,6 +442,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         val widgets = placeNewWidgets(state.first)
         for (widget in widgets) {
             val hostView = createWidgetHostView(widget) ?: continue
+            hostView.interactive = widget.interactive
             if (widget.fullscreen) {
                 showFullscreenWidget(hostView)
                 continue
@@ -654,6 +655,17 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
                 updateWidget(views.appWidgetId) { it.copy(cornerPercent = seekBar.progress) }
             }
         })
+
+        fun populateInteractive(interactive: Boolean) {
+            bar.widgetInteractive.text = getString(if (interactive) R.string.on else R.string.off)
+        }
+        populateInteractive(widget.interactive)
+        bar.widgetInteractive.setOnClickListener {
+            val interactive = !views.hostView.interactive
+            views.hostView.interactive = interactive
+            updateWidget(views.appWidgetId) { it.copy(interactive = interactive) }
+            populateInteractive(interactive)
+        }
 
         bar.widgetFullscreen.setOnClickListener {
             // Only one widget can be the background

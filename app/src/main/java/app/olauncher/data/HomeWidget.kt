@@ -12,4 +12,6 @@ data class HomeWidget(
     val topDp: Int = -1,
     // Fills the whole screen behind the clock and apps, like a wallpaper
     val fullscreen: Boolean = false,
+    // Off means taps never reach the widget; it's only there to look at
+    val interactive: Boolean = true,
 )

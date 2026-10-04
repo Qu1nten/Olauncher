@@ -37,6 +37,9 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
      */
     var homeGestures: ((MotionEvent) -> Unit)? = null
 
+    /** When false, no touch reaches the widget's own views; long press and dragging still work. */
+    var interactive = true
+
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private var downX = 0f
     private var downY = 0f
@@ -61,7 +64,7 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
         trackLongPress(ev)
         // Once the long press fired, take over the gesture so the widget doesn't also get a click.
         // A fullscreen widget also gives up swipes, which belong to the home screen.
-        return hasPerformedLongPress || (homeGestures != null && movedBeyondSlop)
+        return !interactive || hasPerformedLongPress || (homeGestures != null && movedBeyondSlop)
     }
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {

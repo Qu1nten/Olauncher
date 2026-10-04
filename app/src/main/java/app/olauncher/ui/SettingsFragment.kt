@@ -115,6 +115,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
             R.id.homeAppsNum -> showHomeAppsNumMenu(view)
             R.id.homeWidgets -> viewModel.addHomeWidget.call()
             R.id.fullscreenWidget -> turnOffFullscreenWidget()
+            R.id.fullscreenWidgetInteractive -> toggleFullscreenWidgetInteractive()
             R.id.dailyWallpaperUrl -> requireContext().openUrl(prefs.dailyWallpaperUrl)
             R.id.dailyWallpaper -> toggleDailyWallpaperUpdate()
             R.id.alignment -> showAlignmentMenu(view)
@@ -182,6 +183,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         binding.homeAppsNum.setOnClickListener(this)
         binding.homeWidgets.setOnClickListener(this)
         binding.fullscreenWidget.setOnClickListener(this)
+        binding.fullscreenWidgetInteractive.setOnClickListener(this)
         binding.screenTimeOnOff.setOnClickListener(this)
         binding.dailyWallpaperUrl.setOnClickListener(this)
         binding.dailyWallpaper.setOnClickListener(this)
@@ -261,8 +263,22 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         requireContext().showToast(getString(R.string.fullscreen_widget_off))
     }
 
+    // Long pressing the fullscreen widget opens settings, so its taps are switched here
+    private fun toggleFullscreenWidgetInteractive() {
+        val widgets = prefs.homeWidgets
+        if (widgets.none { it.fullscreen }) {
+            requireContext().showToast(getString(R.string.fullscreen_widget_hint), Toast.LENGTH_LONG)
+            return
+        }
+        prefs.homeWidgets = widgets.map { if (it.fullscreen) it.copy(interactive = !it.interactive) else it }
+        populateFullscreenWidget()
+    }
+
     private fun populateFullscreenWidget() {
-        binding.fullscreenWidget.text = getString(if (prefs.homeWidgets.any { it.fullscreen }) R.string.on else R.string.off)
+        val fullscreenWidget = prefs.homeWidgets.find { it.fullscreen }
+        binding.fullscreenWidget.text = getString(if (fullscreenWidget != null) R.string.on else R.string.off)
+        binding.fullscreenWidgetInteractive.text =
+            getString(if (fullscreenWidget?.interactive != false) R.string.on else R.string.off)
     }
 
     private fun showDateTimeMenu(anchor: View) {
