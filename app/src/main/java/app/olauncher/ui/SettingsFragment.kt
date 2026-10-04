@@ -38,6 +38,7 @@ import app.olauncher.helper.isTablet
 import app.olauncher.helper.openAppInfo
 import app.olauncher.helper.openUrl
 import app.olauncher.helper.rateApp
+import app.olauncher.helper.removeCustomFont
 import app.olauncher.helper.setPlainWallpaper
 import app.olauncher.helper.shareApp
 import app.olauncher.helper.OlDialog
@@ -86,6 +87,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         populateAppThemeText()
         populateTextSize()
         populateBoldFont()
+        populateCustomFont()
         populateAlignment()
         populateStatusBar()
         populateDateTime()
@@ -119,6 +121,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
             R.id.appThemeText -> showAppThemeMenu(view, showSystem = false)
             R.id.textSizeValue -> showTextSizeDialog()
             R.id.boldFont -> toggleBoldFont()
+            R.id.customFont -> viewModel.pickCustomFont.call()
 
             R.id.swipeLeftApp -> showAppListIfEnabled(Constants.FLAG_SET_SWIPE_LEFT_APP)
             R.id.swipeRightApp -> showAppListIfEnabled(Constants.FLAG_SET_SWIPE_RIGHT_APP)
@@ -155,6 +158,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
 
             R.id.dailyWallpaper -> removeWallpaper()
             R.id.homeWidgets -> removeAllWidgets()
+            R.id.customFont -> resetCustomFont()
             R.id.appThemeText -> showAppThemeMenu(view, showSystem = true)
             R.id.swipeLeftApp -> toggleSwipeLeft()
             R.id.swipeRightApp -> toggleSwipeRight()
@@ -186,6 +190,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         binding.appThemeText.setOnClickListener(this)
         binding.textSizeValue.setOnClickListener(this)
         binding.boldFont.setOnClickListener(this)
+        binding.customFont.setOnClickListener(this)
 
         binding.share.setOnClickListener(this)
         binding.rate.setOnClickListener(this)
@@ -196,6 +201,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
 
         binding.dailyWallpaper.setOnLongClickListener(this)
         binding.homeWidgets.setOnLongClickListener(this)
+        binding.customFont.setOnLongClickListener(this)
         binding.alignment.setOnLongClickListener(this)
         binding.appThemeText.setOnLongClickListener(this)
         binding.swipeLeftApp.setOnLongClickListener(this)
@@ -554,6 +560,18 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         prefs.boldFont = !prefs.boldFont
         populateBoldFont()
         requireActivity().recreate()
+    }
+
+    private fun resetCustomFont() {
+        if (prefs.customFontName.isEmpty()) return
+        requireContext().removeCustomFont()
+        prefs.customFontName = ""
+        requireContext().showToast(getString(R.string.font_reset))
+        requireActivity().recreate()
+    }
+
+    private fun populateCustomFont() {
+        binding.customFont.text = prefs.customFontName.ifEmpty { getString(R.string.system_font) }
     }
 
     private fun populateBoldFont() {

@@ -37,6 +37,7 @@ class Prefs(context: Context) {
     private val SHARE_SHOWN_TIME = "SHARE_SHOWN_TIME"
     private val TEXT_SIZE_SCALE = "TEXT_SIZE_SCALE"
     private val BOLD_FONT = "BOLD_FONT"
+    private val CUSTOM_FONT_NAME = "CUSTOM_FONT_NAME"
     private val PRO_MESSAGE_SHOWN = "PRO_MESSAGE_SHOWN"
     private val HIDE_SET_DEFAULT_LAUNCHER = "HIDE_SET_DEFAULT_LAUNCHER"
     private val SCREEN_TIME_LAST_UPDATED = "SCREEN_TIME_LAST_UPDATED"
@@ -215,6 +216,11 @@ class Prefs(context: Context) {
     var textSizeScale: Float
         get() = prefs.getFloat(TEXT_SIZE_SCALE, 1.0f)
         set(value) = prefs.edit { putFloat(TEXT_SIZE_SCALE, value).apply() }
+
+    // Name of the font file picked in settings; empty means the system font
+    var customFontName: String
+        get() = prefs.getString(CUSTOM_FONT_NAME, "").orEmpty()
+        set(value) = prefs.edit { putString(CUSTOM_FONT_NAME, value) }
 
     var boldFont: Boolean
         get() = prefs.getBoolean(BOLD_FONT, false)

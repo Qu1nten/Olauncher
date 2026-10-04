@@ -17,9 +17,12 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.view.LayoutInflaterCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
@@ -28,7 +31,10 @@ import app.olauncher.data.Constants
 import app.olauncher.data.HomeWidget
 import app.olauncher.data.Prefs
 import app.olauncher.databinding.ActivityMainBinding
+import app.olauncher.helper.CustomFontInflaterFactory
 import app.olauncher.helper.defaultHeightDp
+import app.olauncher.helper.importCustomFont
+import app.olauncher.helper.loadCustomFont
 import app.olauncher.helper.getColorFromAttr
 import app.olauncher.helper.hasBeenDays
 import app.olauncher.helper.hasBeenHours
@@ -68,6 +74,18 @@ class MainActivity : AppCompatActivity() {
     private var messageDialog: OlDialog? = null
     private var pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
 
+    // Picked here rather than in settings: leaving for the file picker pops settings off the stack
+    private val pickFont = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val name = importCustomFont(uri)
+        if (name == null) {
+            showToast(getString(R.string.font_not_usable), Toast.LENGTH_LONG)
+            return@registerForActivityResult
+        }
+        prefs.customFontName = name
+        recreate()
+    }
+
 //    override fun onBackPressed() {
 //        if (navController.currentDestination?.id != R.id.mainFragment)
 //            super.onBackPressed()
@@ -84,6 +102,8 @@ class MainActivity : AppCompatActivity() {
         prefs = Prefs(this)
         if (isEinkDisplay()) prefs.appTheme = AppCompatDelegate.MODE_NIGHT_NO
         AppCompatDelegate.setDefaultNightMode(prefs.appTheme)
+        // Must be installed before super.onCreate, which would otherwise install AppCompat's own factory
+        loadCustomFont()?.let { LayoutInflaterCompat.setFactory2(layoutInflater, CustomFontInflaterFactory(delegate, it)) }
         super.onCreate(savedInstanceState)
         if (prefs.boldFont) theme.applyStyle(R.style.BoldFontOverlay, true)
         if (isEinkDisplay() || isSystemAnimationsDisabled()) theme.applyStyle(R.style.NoAnimationOverlay, true)
@@ -225,6 +245,14 @@ class MainActivity : AppCompatActivity() {
         }
         viewModel.addHomeWidget.observe(this) {
             openWidgetPicker()
+        }
+        viewModel.pickCustomFont.observe(this) {
+            // Font files have no reliable MIME type, so any file is offered and checked after picking
+            try {
+                pickFont.launch(arrayOf("*/*"))
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
         viewModel.showDialog.observe(this) {
             when (it) {

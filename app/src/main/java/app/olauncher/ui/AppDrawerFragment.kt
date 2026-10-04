@@ -27,6 +27,7 @@ import app.olauncher.databinding.FragmentAppDrawerBinding
 import app.olauncher.helper.deletePinnedShortcut
 import app.olauncher.helper.hideKeyboard
 import app.olauncher.helper.isEinkDisplay
+import app.olauncher.helper.loadCustomFont
 import app.olauncher.helper.isSystemAnimationsDisabled
 import app.olauncher.helper.isSystemApp
 import app.olauncher.helper.openAppInfo
@@ -87,6 +88,8 @@ class AppDrawerFragment : BaseFragment() {
         try {
             searchTextView = binding.search.findViewById(R.id.search_src_text)
             searchTextView?.gravity = prefs.appLabelAlignment
+            // SearchView's own text field is a class the font factory doesn't create, so set it here
+            requireContext().loadCustomFont()?.let { searchTextView?.typeface = it }
         } catch (e: Exception) {
             e.printStackTrace()
         }

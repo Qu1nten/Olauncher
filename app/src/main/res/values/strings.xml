@@ -177,6 +177,10 @@
     <string name="move_up">Move up</string>
     <string name="move_down">Move down</string>
     <string name="remove_widget">Remove</string>
+    <string name="font">Font</string>
+    <string name="system_font">System</string>
+    <string name="font_not_usable">That file isn\'t a font Android can use. Pick a .ttf or .otf file.</string>
+    <string name="font_reset">Back to the system font</string>
     <string name="pin_action_not_supported">This pin action is not supported</string>
     <string name="shortcut_pinned">Shortcut added</string>
     <string name="shortcut_pin_failed">Could not add shortcut</string>
