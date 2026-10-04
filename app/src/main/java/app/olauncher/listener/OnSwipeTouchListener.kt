@@ -1,6 +1,7 @@
 package app.olauncher.listener
 
 import android.content.Context
+import android.os.SystemClock
 import android.view.GestureDetector
 import android.view.GestureDetector.SimpleOnGestureListener
 import android.view.MotionEvent
@@ -30,6 +31,15 @@ internal open class OnSwipeTouchListener(c: Context?) : OnTouchListener {
         if (motionEvent.action == MotionEvent.ACTION_UP)
             longPressOn = false
         return gestureDetector.onTouchEvent(motionEvent)
+    }
+
+    /** Drops the gesture in progress, when something else (like a widget being edited) took over the touch. */
+    fun cancelGesture() {
+        longPressOn = false
+        val now = SystemClock.uptimeMillis()
+        val cancel = MotionEvent.obtain(now, now, MotionEvent.ACTION_CANCEL, 0f, 0f, 0)
+        gestureDetector.onTouchEvent(cancel)
+        cancel.recycle()
     }
 
     private inner class GestureListener : SimpleOnGestureListener() {

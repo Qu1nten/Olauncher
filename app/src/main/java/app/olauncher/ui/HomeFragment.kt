@@ -70,7 +70,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private lateinit var deviceManager: DevicePolicyManager
     private lateinit var widgetHost: HomeWidgetHost
     private lateinit var appWidgetManager: AppWidgetManager
-    private lateinit var homeGestureListener: View.OnTouchListener
+    private lateinit var homeGestureListener: OnSwipeTouchListener
     private var editingWidgetId: Int? = null
     private val widgetViews = mutableListOf<WidgetViews>()
     // Resize overlay and edit bar of the widget being edited
@@ -443,6 +443,8 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         for (widget in widgets) {
             val hostView = createWidgetHostView(widget) ?: continue
             hostView.interactive = widget.interactive
+            hostView.homeGestures = { event -> homeGestureListener.onTouch(binding.mainLayout, event) }
+            hostView.onHomeGestureCancel = { homeGestureListener.cancelGesture() }
             if (widget.fullscreen) {
                 showFullscreenWidget(hostView)
                 continue
@@ -487,7 +489,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         val metrics = resources.displayMetrics
         hostView.setPadding(0, 0, 0, 0)
         hostView.updateSize(metrics.widthPixels.pxToDp(), metrics.heightPixels.pxToDp())
-        hostView.homeGestures = { event -> homeGestureListener.onTouch(binding.mainLayout, event) }
+        hostView.isBackground = true
         binding.wallpaperWidgetLayout.addView(
             hostView,
             FrameLayout.LayoutParams.MATCH_PARENT,
@@ -970,7 +972,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
     private fun textOnLongClick(view: View) = onLongClick(view)
 
-    private fun getSwipeGestureListener(context: Context): View.OnTouchListener {
+    private fun getSwipeGestureListener(context: Context): OnSwipeTouchListener {
         return object : OnSwipeTouchListener(context) {
             override fun onSwipeLeft() {
                 super.onSwipeLeft()

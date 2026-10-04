@@ -31,14 +31,25 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
     var onDrag: ((dy: Float) -> Unit)? = null
     var onDragEnd: ((dy: Float) -> Unit)? = null
 
-    /**
-     * Set for a fullscreen widget: every touch is also handed to the home screen's gesture
-     * handling, and only plain taps reach the widget, so swipes and long press work as usual.
-     */
+    /** The home screen's gesture handling (swipes, double tap, long press for settings). */
     var homeGestures: ((MotionEvent) -> Unit)? = null
+    /** Tells the home screen to drop the gesture it was handed, because the widget took it over. */
+    var onHomeGestureCancel: (() -> Unit)? = null
 
-    /** When false, no touch reaches the widget's own views; long press and dragging still work. */
+    /**
+     * Fullscreen widget: every touch also goes to the home screen, and only plain taps
+     * reach the widget, so swipes and long press for settings work as usual.
+     */
+    var isBackground = false
+
+    /**
+     * When false, no touch reaches the widget's own views and every gesture also goes to the
+     * home screen, as if the widget weren't there. Long press still selects it for editing.
+     */
     var interactive = true
+
+    // Decided when a touch starts, so switching settings mid-gesture can't half-forward it
+    private var forwardingHome = false
 
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private var downX = 0f
@@ -50,13 +61,19 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
     private val longPressRunnable = Runnable {
         hasPerformedLongPress = true
         onLongPress?.let {
+            // The widget is being edited now, so the home screen mustn't also act on this touch
+            if (forwardingHome) {
+                forwardingHome = false
+                onHomeGestureCancel?.invoke()
+            }
             performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
             it()
         }
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        homeGestures?.invoke(ev)
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) forwardingHome = isBackground || !interactive
+        if (forwardingHome) homeGestures?.invoke(ev)
         return super.dispatchTouchEvent(ev)
     }
 
@@ -64,7 +81,7 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
         trackLongPress(ev)
         // Once the long press fired, take over the gesture so the widget doesn't also get a click.
         // A fullscreen widget also gives up swipes, which belong to the home screen.
-        return !interactive || hasPerformedLongPress || (homeGestures != null && movedBeyondSlop)
+        return !interactive || hasPerformedLongPress || (isBackground && movedBeyondSlop)
     }
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {
