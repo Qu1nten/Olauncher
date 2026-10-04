@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -17,12 +20,43 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      # Sign every build with the same key so new APKs install over old ones.
+      # A DEBUG_KEYSTORE_BASE64 repository secret wins; otherwise the key is kept in the Actions cache.
+      - name: Restore signing key from secret
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        if: env.DEBUG_KEYSTORE_BASE64 != ''
+        run: |
+          mkdir -p ~/.android
+          echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
+
+      - name: Restore signing key from cache
+        if: hashFiles('~/.android/debug.keystore') == ''
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: debug-keystore
+
       - name: Build debug APK
         run: |
           chmod +x gradlew
           ./gradlew assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk olauncher-widgets.apk
 
       - uses: actions/upload-artifact@v4
         with:
           name: olauncher-widgets-debug
-          path: app/build/outputs/apk/debug/*.apk
+          path: olauncher-widgets.apk
+
+      - name: Publish release
+        if: github.ref == 'refs/heads/master'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: Olauncher with widgets (build ${{ github.run_number }})
+          target_commitish: ${{ github.sha }}
+          make_latest: true
+          body: |
+            Built from ${{ github.sha }}.
+            Install olauncher-widgets.apk below. Newer builds install over older ones.
+          files: olauncher-widgets.apk
