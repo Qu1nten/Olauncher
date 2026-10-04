@@ -70,6 +70,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private lateinit var deviceManager: DevicePolicyManager
     private lateinit var widgetHost: HomeWidgetHost
     private lateinit var appWidgetManager: AppWidgetManager
+    private lateinit var homeGestureListener: View.OnTouchListener
     private var editingWidgetId: Int? = null
     private val widgetViews = mutableListOf<WidgetViews>()
     // Resize overlay and edit bar of the widget being edited
@@ -259,7 +260,8 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
     private fun initSwipeTouchListener() {
         val context = requireContext()
-        binding.mainLayout.setOnTouchListener(getSwipeGestureListener(context))
+        homeGestureListener = getSwipeGestureListener(context)
+        binding.mainLayout.setOnTouchListener(homeGestureListener)
         binding.homeApp1.setOnTouchListener(getViewSwipeTouchListener(context, binding.homeApp1))
         binding.homeApp2.setOnTouchListener(getViewSwipeTouchListener(context, binding.homeApp2))
         binding.homeApp3.setOnTouchListener(getViewSwipeTouchListener(context, binding.homeApp3))
@@ -434,18 +436,14 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         shownWidgets = state
 
         binding.widgetsLayout.removeAllViews()
+        binding.wallpaperWidgetLayout.removeAllViews()
         widgetViews.clear()
         editViews = emptyList()
         val widgets = placeNewWidgets(state.first)
         for (widget in widgets) {
-            // Skip widgets whose app is gone or unavailable; they can be cleared from settings
-            val info = appWidgetManager.getAppWidgetInfo(widget.appWidgetId) ?: continue
-            val hostView = try {
-                // Not the activity context: its AppCompat inflater swaps in views RemoteViews can't drive,
-                // which makes every widget show "Couldn't add widget"
-                widgetHost.createView(requireContext().applicationContext, widget.appWidgetId, info) as HomeWidgetHostView
-            } catch (e: Exception) {
-                e.printStackTrace()
+            val hostView = createWidgetHostView(widget) ?: continue
+            if (widget.fullscreen) {
+                showFullscreenWidget(hostView)
                 continue
             }
             hostView.updateSize(widget.widthDp.takeIf { it > 0 } ?: fullWidgetWidthDp(), widget.heightDp)
@@ -466,13 +464,41 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         }
         editingWidgetId?.let { showWidgetEditViews(it) }
         binding.widgetsLayout.isVisible = binding.widgetsLayout.childCount > 0
+        binding.wallpaperWidgetLayout.isVisible = binding.wallpaperWidgetLayout.childCount > 0
+    }
+
+    private fun createWidgetHostView(widget: HomeWidget): HomeWidgetHostView? {
+        // Skip widgets whose app is gone or unavailable; they can be cleared from settings
+        val info = appWidgetManager.getAppWidgetInfo(widget.appWidgetId) ?: return null
+        return try {
+            // Not the activity context: its AppCompat inflater swaps in views RemoteViews can't drive,
+            // which makes every widget show "Couldn't add widget"
+            widgetHost.createView(requireContext().applicationContext, widget.appWidgetId, info) as HomeWidgetHostView
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    // Fills the screen behind the clock and apps. Home gestures keep working on top of it,
+    // so it's turned back into a normal widget from settings rather than by long pressing it.
+    private fun showFullscreenWidget(hostView: HomeWidgetHostView) {
+        val metrics = resources.displayMetrics
+        hostView.setPadding(0, 0, 0, 0)
+        hostView.updateSize(metrics.widthPixels.pxToDp(), metrics.heightPixels.pxToDp())
+        hostView.homeGestures = { event -> homeGestureListener.onTouch(binding.mainLayout, event) }
+        binding.wallpaperWidgetLayout.addView(
+            hostView,
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.MATCH_PARENT
+        )
     }
 
     // Gives widgets that have no position yet one below the lowest widget, and saves it
     private fun placeNewWidgets(widgets: List<HomeWidget>): List<HomeWidget> {
         if (widgets.none { it.topDp < 0 }) return widgets
         val areaHeightDp = widgetAreaHeightPx().pxToDp()
-        var nextTopDp = widgets.filter { it.topDp >= 0 }.maxOfOrNull { it.topDp + it.heightDp + 8 }
+        var nextTopDp = widgets.filter { it.topDp >= 0 && !it.fullscreen }.maxOfOrNull { it.topDp + it.heightDp + 8 }
             ?: Constants.WIDGET_FIRST_TOP_DP
         val placed = widgets.map { widget ->
             if (widget.topDp >= 0) return@map widget
@@ -628,6 +654,13 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
                 updateWidget(views.appWidgetId) { it.copy(cornerPercent = seekBar.progress) }
             }
         })
+
+        bar.widgetFullscreen.setOnClickListener {
+            // Only one widget can be the background
+            editingWidgetId = null
+            prefs.homeWidgets = prefs.homeWidgets.map { it.copy(fullscreen = it.appWidgetId == views.appWidgetId) }
+            populateWidgets()
+        }
 
         bar.widgetRemove.setOnClickListener {
             widgetHost.deleteAppWidgetId(views.appWidgetId)

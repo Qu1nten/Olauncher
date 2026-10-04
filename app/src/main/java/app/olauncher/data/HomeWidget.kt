@@ -10,4 +10,6 @@ data class HomeWidget(
     val cornerPercent: Int = 0,
     // Distance from the top of the screen; negative until placed, then it's put below the other widgets
     val topDp: Int = -1,
+    // Fills the whole screen behind the clock and apps, like a wallpaper
+    val fullscreen: Boolean = false,
 )

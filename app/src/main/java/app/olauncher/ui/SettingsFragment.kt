@@ -88,6 +88,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         populateTextSize()
         populateBoldFont()
         populateCustomFont()
+        populateFullscreenWidget()
         populateAlignment()
         populateStatusBar()
         populateDateTime()
@@ -113,6 +114,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
             R.id.autoShowKeyboard -> toggleKeyboardText()
             R.id.homeAppsNum -> showHomeAppsNumMenu(view)
             R.id.homeWidgets -> viewModel.addHomeWidget.call()
+            R.id.fullscreenWidget -> turnOffFullscreenWidget()
             R.id.dailyWallpaperUrl -> requireContext().openUrl(prefs.dailyWallpaperUrl)
             R.id.dailyWallpaper -> toggleDailyWallpaperUpdate()
             R.id.alignment -> showAlignmentMenu(view)
@@ -179,6 +181,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         // binding.homeButtonRecents.setOnClickListener(this)
         binding.homeAppsNum.setOnClickListener(this)
         binding.homeWidgets.setOnClickListener(this)
+        binding.fullscreenWidget.setOnClickListener(this)
         binding.screenTimeOnOff.setOnClickListener(this)
         binding.dailyWallpaperUrl.setOnClickListener(this)
         binding.dailyWallpaper.setOnClickListener(this)
@@ -241,7 +244,25 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
     private fun removeAllWidgets() {
         AppWidgetHost(requireContext(), Constants.HOME_WIDGET_HOST_ID).deleteHost()
         prefs.homeWidgets = emptyList()
+        populateFullscreenWidget()
         requireContext().showToast(getString(R.string.widgets_removed))
+    }
+
+    // Turning it on happens from the widget itself: long press it, then Fullscreen
+    private fun turnOffFullscreenWidget() {
+        val widgets = prefs.homeWidgets
+        if (widgets.none { it.fullscreen }) {
+            requireContext().showToast(getString(R.string.fullscreen_widget_hint), Toast.LENGTH_LONG)
+            return
+        }
+        // A negative top puts it back below the other widgets
+        prefs.homeWidgets = widgets.map { if (it.fullscreen) it.copy(fullscreen = false, topDp = -1) else it }
+        populateFullscreenWidget()
+        requireContext().showToast(getString(R.string.fullscreen_widget_off))
+    }
+
+    private fun populateFullscreenWidget() {
+        binding.fullscreenWidget.text = getString(if (prefs.homeWidgets.any { it.fullscreen }) R.string.on else R.string.off)
     }
 
     private fun showDateTimeMenu(anchor: View) {

@@ -31,22 +31,37 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
     var onDrag: ((dy: Float) -> Unit)? = null
     var onDragEnd: ((dy: Float) -> Unit)? = null
 
+    /**
+     * Set for a fullscreen widget: every touch is also handed to the home screen's gesture
+     * handling, and only plain taps reach the widget, so swipes and long press work as usual.
+     */
+    var homeGestures: ((MotionEvent) -> Unit)? = null
+
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private var downX = 0f
     private var downY = 0f
     private var downRawY = 0f
     private var hasPerformedLongPress = false
+    private var movedBeyondSlop = false
 
     private val longPressRunnable = Runnable {
         hasPerformedLongPress = true
-        performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-        onLongPress?.invoke()
+        onLongPress?.let {
+            performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+            it()
+        }
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        homeGestures?.invoke(ev)
+        return super.dispatchTouchEvent(ev)
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
         trackLongPress(ev)
-        // Once the long press fired, take over the gesture so the widget doesn't also get a click
-        return hasPerformedLongPress
+        // Once the long press fired, take over the gesture so the widget doesn't also get a click.
+        // A fullscreen widget also gives up swipes, which belong to the home screen.
+        return hasPerformedLongPress || (homeGestures != null && movedBeyondSlop)
     }
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {
@@ -71,6 +86,7 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 hasPerformedLongPress = false
+                movedBeyondSlop = false
                 downX = ev.x
                 downY = ev.y
                 downRawY = ev.rawY
@@ -79,8 +95,10 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
             }
 
             MotionEvent.ACTION_MOVE -> {
-                if (abs(ev.x - downX) > touchSlop || abs(ev.y - downY) > touchSlop)
+                if (abs(ev.x - downX) > touchSlop || abs(ev.y - downY) > touchSlop) {
+                    movedBeyondSlop = true
                     removeCallbacks(longPressRunnable)
+                }
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL, MotionEvent.ACTION_POINTER_DOWN ->

@@ -176,6 +176,10 @@
     <string name="done">Done</string>
     <string name="corners">Corners</string>
     <string name="percent">%1$d%%</string>
+    <string name="fullscreen">Fullscreen</string>
+    <string name="fullscreen_widget">Fullscreen widget</string>
+    <string name="fullscreen_widget_hint">Long press a widget and turn on Fullscreen to use it as your background</string>
+    <string name="fullscreen_widget_off">Fullscreen widget is back on the home screen</string>
     <string name="remove_widget">Remove</string>
     <string name="font">Font</string>
     <string name="system_font">System</string>

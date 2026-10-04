@@ -166,7 +166,7 @@ class Prefs(context: Context) {
         get() = prefs.getInt(HOME_APPS_NUM, 4)
         set(value) = prefs.edit { putInt(HOME_APPS_NUM, value).apply() }
 
-    // Stored in drawing order as "appWidgetId:heightDp:widthDp:cornerPercent:topDp" entries separated by ';'
+    // Stored in drawing order as "appWidgetId:heightDp:widthDp:cornerPercent:topDp:fullscreen" entries separated by ';'
     var homeWidgets: List<HomeWidget>
         get() = prefs.getString(HOME_WIDGETS, "").orEmpty()
             .split(";")
@@ -177,10 +177,11 @@ class Prefs(context: Context) {
                 val width = parts.getOrNull(2)?.toIntOrNull() ?: 0
                 val corners = parts.getOrNull(3)?.toIntOrNull() ?: 0
                 val top = parts.getOrNull(4)?.toIntOrNull() ?: -1
-                HomeWidget(id, height, width, corners, top)
+                val fullscreen = parts.getOrNull(5) == "1"
+                HomeWidget(id, height, width, corners, top, fullscreen)
             }
         set(value) = prefs.edit {
-            putString(HOME_WIDGETS, value.joinToString(";") { "${it.appWidgetId}:${it.heightDp}:${it.widthDp}:${it.cornerPercent}:${it.topDp}" })
+            putString(HOME_WIDGETS, value.joinToString(";") { "${it.appWidgetId}:${it.heightDp}:${it.widthDp}:${it.cornerPercent}:${it.topDp}:${if (it.fullscreen) 1 else 0}" })
         }
 
     var homeAlignment: Int
