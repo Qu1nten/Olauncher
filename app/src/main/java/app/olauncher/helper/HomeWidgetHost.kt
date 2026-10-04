@@ -22,15 +22,19 @@ class HomeWidgetHost(context: Context) : AppWidgetHost(context, Constants.HOME_W
 
 /**
  * Widget view that reports a long press anywhere on the widget, even over the
- * widget's own buttons, so it can be resized, moved or removed.
+ * widget's own buttons, so it can be edited. Keeping the finger down after the
+ * long press drags the widget: [onDrag] gets the vertical distance moved.
  */
 class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
 
     var onLongPress: (() -> Unit)? = null
+    var onDrag: ((dy: Float) -> Unit)? = null
+    var onDragEnd: ((dy: Float) -> Unit)? = null
 
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
     private var downX = 0f
     private var downY = 0f
+    private var downRawY = 0f
     private var hasPerformedLongPress = false
 
     private val longPressRunnable = Runnable {
@@ -46,8 +50,20 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
     }
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {
-        // Reached when no child handles the touch; keep receiving events so long press works on empty areas
+        // Reached when no child handles the touch, or after the long press took over the gesture.
+        // Keep receiving events so long press works on empty areas and the widget can be dragged.
         trackLongPress(ev)
+        if (hasPerformedLongPress) {
+            // Raw coordinates, since the view itself moves while being dragged
+            val dy = ev.rawY - downRawY
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_MOVE -> onDrag?.invoke(dy)
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    hasPerformedLongPress = false
+                    onDragEnd?.invoke(dy)
+                }
+            }
+        }
         return true
     }
 
@@ -57,6 +73,7 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
                 hasPerformedLongPress = false
                 downX = ev.x
                 downY = ev.y
+                downRawY = ev.rawY
                 removeCallbacks(longPressRunnable)
                 postDelayed(longPressRunnable, ViewConfiguration.getLongPressTimeout().toLong())
             }

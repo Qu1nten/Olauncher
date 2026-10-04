@@ -12,13 +12,23 @@ import android.view.View
 /**
  * Drawn over a widget while it's being edited: a dashed outline with a handle on the
  * bottom edge (height) and one on the side edge (width). The widget underneath gets no
- * touches meanwhile. Drags report how much the widget should grow since the drag started.
+ * touches meanwhile. Dragging a handle reports how much the widget should grow since the
+ * drag started; dragging anywhere else reports how far the widget was moved vertically.
  */
 class WidgetResizeOverlay(context: Context) : View(context) {
 
     /** Called while dragging with the growth in px since the drag started; negative shrinks. */
     var onResize: ((growWidth: Float, growHeight: Float) -> Unit)? = null
     var onResizeEnd: (() -> Unit)? = null
+    var onMove: ((dy: Float) -> Unit)? = null
+    var onMoveEnd: ((dy: Float) -> Unit)? = null
+
+    /** Matches the outline to the widget's rounded corners, see [widgetCornerRadius]. */
+    var cornerPercent = 0
+        set(value) {
+            field = value
+            invalidate()
+        }
 
     /** Puts the width handle on the start edge, for widgets aligned to the end of the screen. */
     var widthHandleOnStart = false
@@ -50,6 +60,7 @@ class WidgetResizeOverlay(context: Context) : View(context) {
 
     private var dragWidth = false
     private var dragHeight = false
+    private var moving = false
     private var startRawX = 0f
     private var startRawY = 0f
 
@@ -59,7 +70,7 @@ class WidgetResizeOverlay(context: Context) : View(context) {
         val w = width.toFloat()
         val h = height.toFloat()
         val inset = borderPaint.strokeWidth / 2
-        val radius = 8 * density
+        val radius = widgetCornerRadius(width, height, cornerPercent)
         rect.set(inset, inset, w - inset, h - inset)
         canvas.drawRoundRect(rect, radius, radius, dimPaint)
         canvas.drawRoundRect(rect, radius, radius, borderPaint)
@@ -84,11 +95,15 @@ class WidgetResizeOverlay(context: Context) : View(context) {
                 // Raw coordinates, since the view itself changes size during the drag
                 startRawX = event.rawX
                 startRawY = event.rawY
-                if (dragWidth || dragHeight) parent?.requestDisallowInterceptTouchEvent(true)
+                moving = !dragWidth && !dragHeight
+                parent?.requestDisallowInterceptTouchEvent(true)
             }
 
             MotionEvent.ACTION_MOVE -> {
-                if (!dragWidth && !dragHeight) return true
+                if (moving) {
+                    onMove?.invoke(event.rawY - startRawY)
+                    return true
+                }
                 val dx = event.rawX - startRawX
                 val growWidth = if (!dragWidth) 0f else if (widthHandleOnLeft) -dx else dx
                 val growHeight = if (dragHeight) event.rawY - startRawY else 0f
@@ -96,12 +111,18 @@ class WidgetResizeOverlay(context: Context) : View(context) {
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                if (dragWidth || dragHeight) onResizeEnd?.invoke()
+                if (moving) onMoveEnd?.invoke(event.rawY - startRawY)
+                else onResizeEnd?.invoke()
                 dragWidth = false
                 dragHeight = false
+                moving = false
             }
         }
         // Swallow everything so the widget underneath can't be tapped while editing
         return true
     }
 }
+
+/** Corner radius for a widget of this size: [percent] of the way to fully rounded short sides. */
+fun widgetCornerRadius(width: Int, height: Int, percent: Int): Float =
+    minOf(width, height) / 2f * percent.coerceIn(0, 100) / 100f

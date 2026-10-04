@@ -5,7 +5,9 @@ import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
+import android.content.res.ColorStateList
 import android.content.res.Configuration
+import android.graphics.Outline
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
@@ -13,9 +15,11 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.WindowInsets
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.RequiresApi
@@ -49,6 +53,7 @@ import app.olauncher.helper.openCameraApp
 import app.olauncher.helper.openDialerApp
 import app.olauncher.helper.setPlainWallpaperByTheme
 import app.olauncher.helper.WidgetResizeOverlay
+import app.olauncher.helper.widgetCornerRadius
 import app.olauncher.helper.showToast
 import app.olauncher.listener.OnSwipeTouchListener
 import app.olauncher.listener.ViewSwipeTouchListener
@@ -56,6 +61,8 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
+
+private class WidgetViews(val appWidgetId: Int, val frame: FrameLayout, val hostView: HomeWidgetHostView)
 
 class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListener {
 
@@ -65,6 +72,9 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private lateinit var widgetHost: HomeWidgetHost
     private lateinit var appWidgetManager: AppWidgetManager
     private var editingWidgetId: Int? = null
+    private val widgetViews = mutableListOf<WidgetViews>()
+    // Resize overlay and edit bar of the widget being edited
+    private var editViews: List<View> = emptyList()
     private var shownWidgets: Pair<List<HomeWidget>, Int?>? = null
 
     private var _binding: FragmentHomeBinding? = null
@@ -84,6 +94,10 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
         deviceManager = context?.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
         widgetHost = HomeWidgetHost(requireContext().applicationContext)
+        // Let a dragged widget show outside the widget area instead of being cut off
+        binding.widgetsLayout.clipChildren = false
+        binding.homeAppsLayout.clipChildren = false
+        binding.homeAppsLayout.clipToPadding = false
         appWidgetManager = AppWidgetManager.getInstance(requireContext())
 
         initObservers()
@@ -425,6 +439,8 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         shownWidgets = state
 
         binding.widgetsLayout.removeAllViews()
+        widgetViews.clear()
+        editViews = emptyList()
         for (widget in state.first) {
             // Skip widgets whose app is gone or unavailable; they can be cleared from settings
             val info = appWidgetManager.getAppWidgetInfo(widget.appWidgetId) ?: continue
@@ -437,6 +453,9 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
                 continue
             }
             hostView.updateSize(widget.widthDp.takeIf { it > 0 } ?: fullWidgetWidthDp(), widget.heightDp)
+            hostView.onLongPress = { startEditingWidget(widget.appWidgetId) }
+            hostView.onDrag = { dy -> dragWidget(widget.appWidgetId, dy) }
+            hostView.onDragEnd = { dy -> dropWidget(widget.appWidgetId, dy) }
 
             val frame = FrameLayout(requireContext())
             frame.addView(hostView, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
@@ -447,15 +466,11 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
                 gravity = prefs.homeAlignment
                 if (binding.widgetsLayout.childCount > 0) topMargin = 8.dpToPx()
             }
+            setWidgetCorners(frame, widget.cornerPercent)
             binding.widgetsLayout.addView(frame)
-
-            if (widget.appWidgetId == editingWidgetId) {
-                addResizeOverlay(frame, hostView, widget)
-                addWidgetEditBar(widget)
-            } else {
-                hostView.onLongPress = { startEditingWidget(widget.appWidgetId) }
-            }
+            widgetViews += WidgetViews(widget.appWidgetId, frame, hostView)
         }
+        editingWidgetId?.let { showWidgetEditViews(it) }
         binding.widgetsLayout.isVisible = binding.widgetsLayout.childCount > 0
     }
 
@@ -466,10 +481,32 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
     private fun Int.pxToDp(): Int = (this / resources.displayMetrics.density).roundToInt()
 
+    private fun updateWidget(appWidgetId: Int, change: (HomeWidget) -> HomeWidget) {
+        prefs.homeWidgets = prefs.homeWidgets.map { if (it.appWidgetId == appWidgetId) change(it) else it }
+        // The views already show the change, so don't rebuild them
+        shownWidgets = prefs.homeWidgets to editingWidgetId
+    }
+
+    private fun setWidgetCorners(frame: View, percent: Int) {
+        if (percent <= 0) {
+            frame.clipToOutline = false
+            frame.outlineProvider = ViewOutlineProvider.BACKGROUND
+            return
+        }
+        frame.outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setRoundRect(0, 0, view.width, view.height, widgetCornerRadius(view.width, view.height, percent))
+            }
+        }
+        frame.clipToOutline = true
+    }
+
     private fun startEditingWidget(appWidgetId: Int) {
+        if (editingWidgetId == appWidgetId) return
         editingWidgetId = appWidgetId
-        // Rebuild after the long press gesture that triggered this has been handled
-        binding.widgetsLayout.post { if (_binding != null) populateWidgets() }
+        // Added in place rather than rebuilding, so the finger that long pressed can keep dragging the widget
+        showWidgetEditViews(appWidgetId)
+        shownWidgets = prefs.homeWidgets to editingWidgetId
     }
 
     private fun stopEditingWidget() {
@@ -478,12 +515,26 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         populateWidgets()
     }
 
-    private fun addResizeOverlay(frame: FrameLayout, hostView: HomeWidgetHostView, widget: HomeWidget) {
+    private fun showWidgetEditViews(appWidgetId: Int) {
+        editViews.forEach { (it.parent as? ViewGroup)?.removeView(it) }
+        editViews = emptyList()
+        val views = widgetViews.find { it.appWidgetId == appWidgetId } ?: return
+        val widget = prefs.homeWidgets.find { it.appWidgetId == appWidgetId } ?: return
+
+        val overlay = createResizeOverlay(views, widget)
+        views.frame.addView(overlay, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+        val bar = createWidgetEditBar(views, widget)
+        binding.widgetsLayout.addView(bar, binding.widgetsLayout.indexOfChild(views.frame) + 1)
+        editViews = listOf(overlay, bar)
+    }
+
+    private fun createResizeOverlay(views: WidgetViews, widget: HomeWidget): WidgetResizeOverlay {
+        val frame = views.frame
         val overlay = WidgetResizeOverlay(requireContext()).apply {
             color = requireContext().getColorFromAttr(R.attr.primaryColor)
             widthHandleOnStart = prefs.homeAlignment == Gravity.END
+            cornerPercent = widget.cornerPercent
         }
-        frame.addView(overlay, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
 
         var startWidth = 0
         var startHeight = 0
@@ -509,42 +560,76 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             if (fullWidth) params.width = LinearLayout.LayoutParams.MATCH_PARENT
             frame.layoutParams = params
 
-            val resized = widget.copy(
-                widthDp = if (fullWidth) 0 else params.width.pxToDp(),
-                heightDp = params.height.pxToDp(),
-            )
-            prefs.homeWidgets = prefs.homeWidgets.map { if (it.appWidgetId == widget.appWidgetId) resized else it }
-            shownWidgets = prefs.homeWidgets to editingWidgetId
-            hostView.updateSize(resized.widthDp.takeIf { it > 0 } ?: fullWidgetWidthDp(), resized.heightDp)
+            val widthDp = if (fullWidth) 0 else params.width.pxToDp()
+            val heightDp = params.height.pxToDp()
+            updateWidget(views.appWidgetId) { it.copy(widthDp = widthDp, heightDp = heightDp) }
+            views.hostView.updateSize(widthDp.takeIf { it > 0 } ?: fullWidgetWidthDp(), heightDp)
             startWidth = 0
             startHeight = 0
         }
+        overlay.onMove = { dy -> dragWidget(views.appWidgetId, dy) }
+        overlay.onMoveEnd = { dy -> dropWidget(views.appWidgetId, dy) }
+        return overlay
     }
 
-    private fun addWidgetEditBar(widget: HomeWidget) {
-        val widgets = prefs.homeWidgets
-        val index = widgets.indexOfFirst { it.appWidgetId == widget.appWidgetId }
+    private fun createWidgetEditBar(views: WidgetViews, widget: HomeWidget): View {
         val bar = LayoutWidgetEditBarBinding.inflate(layoutInflater, binding.widgetsLayout, false)
-        bar.widgetMoveUp.isVisible = index > 0
-        bar.widgetMoveDown.isVisible = index in 0 until widgets.lastIndex
+        val color = ColorStateList.valueOf(requireContext().getColorFromAttr(R.attr.primaryColor))
+        bar.widgetCorners.progressTintList = color
+        bar.widgetCorners.thumbTintList = color
+        bar.widgetCorners.progress = widget.cornerPercent
+        bar.widgetCornersValue.text = getString(R.string.percent, widget.cornerPercent)
+        bar.widgetCorners.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
+                bar.widgetCornersValue.text = getString(R.string.percent, progress)
+                setWidgetCorners(views.frame, progress)
+                (editViews.firstOrNull() as? WidgetResizeOverlay)?.cornerPercent = progress
+            }
 
-        fun update(updated: List<HomeWidget>) {
-            prefs.homeWidgets = updated
+            override fun onStartTrackingTouch(seekBar: SeekBar) = Unit
+
+            override fun onStopTrackingTouch(seekBar: SeekBar) {
+                updateWidget(views.appWidgetId) { it.copy(cornerPercent = seekBar.progress) }
+            }
+        })
+
+        bar.widgetRemove.setOnClickListener {
+            widgetHost.deleteAppWidgetId(views.appWidgetId)
+            editingWidgetId = null
+            prefs.homeWidgets = prefs.homeWidgets.filter { it.appWidgetId != views.appWidgetId }
             populateWidgets()
         }
-        bar.widgetMoveUp.setOnClickListener {
-            update(widgets.toMutableList().apply { add(index - 1, removeAt(index)) })
-        }
-        bar.widgetMoveDown.setOnClickListener {
-            update(widgets.toMutableList().apply { add(index + 1, removeAt(index)) })
-        }
-        bar.widgetRemove.setOnClickListener {
-            widgetHost.deleteAppWidgetId(widget.appWidgetId)
-            editingWidgetId = null
-            update(widgets.filter { it.appWidgetId != widget.appWidgetId })
-        }
         bar.widgetDone.setOnClickListener { stopEditingWidget() }
-        binding.widgetsLayout.addView(bar.root)
+        return bar.root
+    }
+
+    // Moves the widget (and its edit bar) with the finger, above the other widgets
+    private fun dragWidget(appWidgetId: Int, dy: Float) {
+        val views = widgetViews.find { it.appWidgetId == appWidgetId } ?: return
+        views.frame.translationY = dy
+        views.frame.translationZ = 8.dpToPx().toFloat()
+        editViews.lastOrNull()?.translationY = dy
+    }
+
+    // Drops the widget between the widgets its center ended up between
+    private fun dropWidget(appWidgetId: Int, dy: Float) {
+        val views = widgetViews.find { it.appWidgetId == appWidgetId } ?: return
+        views.frame.translationY = 0f
+        views.frame.translationZ = 0f
+        editViews.lastOrNull()?.translationY = 0f
+
+        val center = views.frame.top + dy + views.frame.height / 2f
+        val widgets = prefs.homeWidgets
+        val dragged = widgets.find { it.appWidgetId == appWidgetId } ?: return
+        val others = widgets - dragged
+        val lastAbove = widgetViews
+            .filter { it !== views && it.frame.top + it.frame.height / 2f < center }
+            .maxByOrNull { it.frame.top }
+        val insertAt = lastAbove?.let { above -> others.indexOfFirst { it.appWidgetId == above.appWidgetId } + 1 } ?: 0
+        val reordered = others.toMutableList().apply { add(insertAt, dragged) }
+        if (reordered == widgets) return
+        prefs.homeWidgets = reordered
+        populateWidgets()
     }
 
     private fun setHomeAppText(
@@ -896,6 +981,8 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         super.onDestroyView()
         shownWidgets = null
         editingWidgetId = null
+        widgetViews.clear()
+        editViews = emptyList()
         _binding = null
     }
 }

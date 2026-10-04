@@ -166,7 +166,7 @@ class Prefs(context: Context) {
         get() = prefs.getInt(HOME_APPS_NUM, 4)
         set(value) = prefs.edit { putInt(HOME_APPS_NUM, value).apply() }
 
-    // Stored top to bottom as "appWidgetId:heightDp:widthDp" entries separated by ';'
+    // Stored top to bottom as "appWidgetId:heightDp:widthDp:cornerPercent" entries separated by ';'
     var homeWidgets: List<HomeWidget>
         get() = prefs.getString(HOME_WIDGETS, "").orEmpty()
             .split(";")
@@ -175,10 +175,11 @@ class Prefs(context: Context) {
                 val id = parts.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
                 val height = parts.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
                 val width = parts.getOrNull(2)?.toIntOrNull() ?: 0
-                HomeWidget(id, height, width)
+                val corners = parts.getOrNull(3)?.toIntOrNull() ?: 0
+                HomeWidget(id, height, width, corners)
             }
         set(value) = prefs.edit {
-            putString(HOME_WIDGETS, value.joinToString(";") { "${it.appWidgetId}:${it.heightDp}:${it.widthDp}" })
+            putString(HOME_WIDGETS, value.joinToString(";") { "${it.appWidgetId}:${it.heightDp}:${it.widthDp}:${it.cornerPercent}" })
         }
 
     var homeAlignment: Int

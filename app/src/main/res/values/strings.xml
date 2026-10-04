@@ -174,8 +174,8 @@
     <string name="widget_add_failed">Could not add widget</string>
     <string name="widgets_removed">All widgets removed</string>
     <string name="done">Done</string>
-    <string name="move_up">Move up</string>
-    <string name="move_down">Move down</string>
+    <string name="corners">Corners</string>
+    <string name="percent">%1$d%%</string>
     <string name="remove_widget">Remove</string>
     <string name="font">Font</string>
     <string name="system_font">System</string>
