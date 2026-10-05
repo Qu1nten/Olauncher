@@ -46,11 +46,11 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:paddingVertical="10dp"
-            android:text="@string/auto_refresh"
+            android:text="@string/reload_on_return"
             android:textSize="16sp" />
 
         <TextView
-            android:id="@+id/widgetRefresh"
+            android:id="@+id/widgetReload"
             style="@style/TextSmallBold"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"

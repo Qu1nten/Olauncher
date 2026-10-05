@@ -2,11 +2,9 @@ package app.olauncher.helper
 
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetHostView
-import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
 import android.animation.ValueAnimator
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -23,8 +21,6 @@ import app.olauncher.data.Constants
 import app.olauncher.data.WidgetTaps
 import kotlin.math.abs
 import kotlin.math.roundToInt
-
-private const val CROSSFADE_MS = 700L
 
 class HomeWidgetHost(context: Context) : AppWidgetHost(context, Constants.HOME_WIDGET_HOST_ID) {
 
@@ -209,10 +205,17 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
     private var fadeAnimator: ValueAnimator? = null
     private val fadePaint = Paint(Paint.FILTER_BITMAP_FLAG)
 
+    /** Called once, the first time the widget's app sends content to show. */
+    var onFirstContent: (() -> Unit)? = null
+
     override fun updateAppWidget(remoteViews: RemoteViews?) {
         val snapshot = snapshotContent()
         super.updateAppWidget(remoteViews)
         if (snapshot != null) startCrossfade(snapshot)
+        if (remoteViews != null) onFirstContent?.let {
+            onFirstContent = null
+            it()
+        }
     }
 
     private fun snapshotContent(): Bitmap? {
@@ -230,7 +233,7 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
         endCrossfade()
         fadeSnapshot = snapshot
         fadeAnimator = ValueAnimator.ofInt(255, 0).apply {
-            duration = CROSSFADE_MS
+            duration = Constants.WIDGET_CROSSFADE_MS
             addUpdateListener {
                 fadePaint.alpha = it.animatedValue as Int
                 invalidate()
@@ -255,23 +258,6 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
         fadeSnapshot?.let { canvas.drawBitmap(it, 0f, 0f, fadePaint) }
     }
 
-    /**
-     * Asks the widget's app to update it now, the same request Android sends on the widget's own
-     * update schedule. The app decides whether that shows anything new.
-     */
-    fun requestUpdate() {
-        val info = appWidgetInfo ?: return
-        try {
-            context.sendBroadcast(
-                Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE)
-                    .setComponent(info.provider)
-                    .putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(appWidgetId))
-            )
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
     /** Tells the widget how much space it has, so it can pick a fitting layout. */
     fun updateSize(widthDp: Int, heightDp: Int) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
@@ -280,6 +266,13 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
             @Suppress("DEPRECATION")
             updateAppWidgetSize(null, widthDp, heightDp, widthDp, heightDp)
     }
+}
+
+/** Whether the widget has to be set up by hand before it can be shown. */
+fun AppWidgetProviderInfo.needsConfiguration(): Boolean {
+    val configurationOptional = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            widgetFeatures and AppWidgetProviderInfo.WIDGET_FEATURE_CONFIGURATION_OPTIONAL != 0
+    return configure != null && !configurationOptional
 }
 
 /** Height a newly added widget starts with, based on the size its provider asks for. */

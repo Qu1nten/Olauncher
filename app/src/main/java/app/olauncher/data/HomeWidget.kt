@@ -12,12 +12,10 @@ data class HomeWidget(
     // Distance from the top of the screen; negative until placed, then it's put below the other widgets
     val topDp: Int = -1,
     val taps: WidgetTaps = WidgetTaps.ON,
-    // How often the widget's app is asked to update it while the home screen is open; 0 is never
-    val refreshSeconds: Int = 0,
+    // Swapped for a fresh copy of itself each time the home screen appears, so apps that pick new
+    // content for a new widget (like Google Photos memories) show something different
+    val reloadOnReturn: Boolean = false,
 )
-
-/** Auto refresh choices, in the order the setting cycles through them. */
-val WIDGET_REFRESH_SECONDS = listOf(0, 5, 30, 60)
 
 /** How touches on a widget are handled. */
 enum class WidgetTaps {

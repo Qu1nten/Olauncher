@@ -35,6 +35,7 @@ import app.olauncher.helper.CustomFontInflaterFactory
 import app.olauncher.helper.defaultHeightDp
 import app.olauncher.helper.importCustomFont
 import app.olauncher.helper.loadCustomFont
+import app.olauncher.helper.needsConfiguration
 import app.olauncher.helper.getColorFromAttr
 import app.olauncher.helper.hasBeenDays
 import app.olauncher.helper.hasBeenHours
@@ -354,9 +355,7 @@ class MainActivity : AppCompatActivity() {
             cancelPendingWidget()
             return
         }
-        val configurationOptional = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                info.widgetFeatures and AppWidgetProviderInfo.WIDGET_FEATURE_CONFIGURATION_OPTIONAL != 0
-        if (info.configure == null || configurationOptional) {
+        if (!info.needsConfiguration()) {
             saveHomeWidget(appWidgetId)
             return
         }

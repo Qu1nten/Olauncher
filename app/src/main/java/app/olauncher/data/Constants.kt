@@ -88,6 +88,9 @@ object Constants {
     const val WIDGET_MIN_WIDTH_DP = 72
     // Where the first widget goes: just below the clock
     const val WIDGET_FIRST_TOP_DP = 160
+    const val WIDGET_CROSSFADE_MS = 700L
+    // How long a reloaded widget's app gets to draw the fresh copy before the current one is kept
+    const val WIDGET_RELOAD_TIMEOUT_MS = 15_000L
 
     const val HINT_RATE_US = 15
 
