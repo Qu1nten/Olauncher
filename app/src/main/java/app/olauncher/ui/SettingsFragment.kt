@@ -24,9 +24,6 @@ import app.olauncher.MainViewModel
 import app.olauncher.R
 import app.olauncher.data.Constants
 import app.olauncher.data.Prefs
-import app.olauncher.data.WidgetTaps
-import app.olauncher.data.label
-import app.olauncher.data.next
 import app.olauncher.databinding.DialogTextSizeBinding
 import app.olauncher.databinding.FragmentSettingsBinding
 import app.olauncher.helper.appUsagePermissionGranted
@@ -91,7 +88,6 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         populateTextSize()
         populateBoldFont()
         populateCustomFont()
-        populateFullscreenWidget()
         populateAlignment()
         populateStatusBar()
         populateDateTime()
@@ -117,8 +113,6 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
             R.id.autoShowKeyboard -> toggleKeyboardText()
             R.id.homeAppsNum -> showHomeAppsNumMenu(view)
             R.id.homeWidgets -> viewModel.addHomeWidget.call()
-            R.id.fullscreenWidget -> turnOffFullscreenWidget()
-            R.id.fullscreenWidgetInteractive -> toggleFullscreenWidgetInteractive()
             R.id.dailyWallpaperUrl -> requireContext().openUrl(prefs.dailyWallpaperUrl)
             R.id.dailyWallpaper -> toggleDailyWallpaperUpdate()
             R.id.alignment -> showAlignmentMenu(view)
@@ -185,8 +179,6 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         // binding.homeButtonRecents.setOnClickListener(this)
         binding.homeAppsNum.setOnClickListener(this)
         binding.homeWidgets.setOnClickListener(this)
-        binding.fullscreenWidget.setOnClickListener(this)
-        binding.fullscreenWidgetInteractive.setOnClickListener(this)
         binding.screenTimeOnOff.setOnClickListener(this)
         binding.dailyWallpaperUrl.setOnClickListener(this)
         binding.dailyWallpaper.setOnClickListener(this)
@@ -249,38 +241,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
     private fun removeAllWidgets() {
         AppWidgetHost(requireContext(), Constants.HOME_WIDGET_HOST_ID).deleteHost()
         prefs.homeWidgets = emptyList()
-        populateFullscreenWidget()
         requireContext().showToast(getString(R.string.widgets_removed))
-    }
-
-    // Turning it on happens from the widget itself: long press it, then Fullscreen
-    private fun turnOffFullscreenWidget() {
-        val widgets = prefs.homeWidgets
-        if (widgets.none { it.fullscreen }) {
-            requireContext().showToast(getString(R.string.fullscreen_widget_hint), Toast.LENGTH_LONG)
-            return
-        }
-        // A negative top puts it back below the other widgets
-        prefs.homeWidgets = widgets.map { if (it.fullscreen) it.copy(fullscreen = false, topDp = -1) else it }
-        populateFullscreenWidget()
-        requireContext().showToast(getString(R.string.fullscreen_widget_off))
-    }
-
-    // Long pressing the fullscreen widget opens settings, so its taps are switched here
-    private fun toggleFullscreenWidgetInteractive() {
-        val widgets = prefs.homeWidgets
-        if (widgets.none { it.fullscreen }) {
-            requireContext().showToast(getString(R.string.fullscreen_widget_hint), Toast.LENGTH_LONG)
-            return
-        }
-        prefs.homeWidgets = widgets.map { if (it.fullscreen) it.copy(taps = it.taps.next()) else it }
-        populateFullscreenWidget()
-    }
-
-    private fun populateFullscreenWidget() {
-        val fullscreenWidget = prefs.homeWidgets.find { it.fullscreen }
-        binding.fullscreenWidget.text = getString(if (fullscreenWidget != null) R.string.on else R.string.off)
-        binding.fullscreenWidgetInteractive.text = getString((fullscreenWidget?.taps ?: WidgetTaps.ON).label)
     }
 
     private fun showDateTimeMenu(anchor: View) {

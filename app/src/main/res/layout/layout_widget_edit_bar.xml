@@ -14,40 +14,6 @@
 
         <TextView
             style="@style/TextSmall"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingVertical="10dp"
-            android:text="@string/corners"
-            android:textSize="16sp" />
-
-        <SeekBar
-            android:id="@+id/widgetCorners"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:max="100"
-            android:paddingVertical="12dp" />
-
-        <TextView
-            android:id="@+id/widgetCornersValue"
-            style="@style/TextSmallBold"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:gravity="end"
-            android:minEms="3"
-            android:paddingVertical="10dp"
-            android:textSize="16sp"
-            tools:text="40%" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <TextView
-            style="@style/TextSmall"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -64,34 +30,6 @@
             android:paddingVertical="10dp"
             android:paddingStart="16dp"
             android:text="@string/on"
-            android:textSize="16sp"
-            tools:ignore="RtlSymmetry" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <TextView
-            style="@style/TextSmall"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:paddingVertical="10dp"
-            android:text="@string/fullscreen"
-            android:textSize="16sp" />
-
-        <TextView
-            android:id="@+id/widgetFullscreen"
-            style="@style/TextSmallBold"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:focusable="true"
-            android:paddingVertical="10dp"
-            android:paddingStart="16dp"
-            android:text="@string/off"
             android:textSize="16sp"
             tools:ignore="RtlSymmetry" />
     </LinearLayout>

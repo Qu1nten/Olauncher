@@ -174,15 +174,8 @@
     <string name="widget_add_failed">Could not add widget</string>
     <string name="widgets_removed">All widgets removed</string>
     <string name="done">Done</string>
-    <string name="corners">Corners</string>
-    <string name="percent">%1$d%%</string>
-    <string name="fullscreen">Fullscreen</string>
     <string name="interactive">Interactive</string>
     <string name="double_tap">Double tap</string>
-    <string name="fullscreen_widget_interactive">Fullscreen widget taps</string>
-    <string name="fullscreen_widget">Fullscreen widget</string>
-    <string name="fullscreen_widget_hint">Long press a widget and turn on Fullscreen to use it as your background</string>
-    <string name="fullscreen_widget_off">Fullscreen widget is back on the home screen</string>
     <string name="remove_widget">Remove</string>
     <string name="font">Font</string>
     <string name="system_font">System</string>

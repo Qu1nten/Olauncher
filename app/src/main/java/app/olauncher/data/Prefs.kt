@@ -166,8 +166,8 @@ class Prefs(context: Context) {
         get() = prefs.getInt(HOME_APPS_NUM, 4)
         set(value) = prefs.edit { putInt(HOME_APPS_NUM, value).apply() }
 
-    // Stored in drawing order as "appWidgetId:heightDp:widthDp:cornerPercent:topDp:fullscreen:taps" entries
-    // separated by ';', where taps is 1 (on), 2 (double tap) or 0 (off)
+    // Stored in drawing order as "appWidgetId:heightDp:widthDp:topDp:taps" entries separated by ';',
+    // where taps is 1 (on), 2 (double tap) or 0 (off)
     var homeWidgets: List<HomeWidget>
         get() = prefs.getString(HOME_WIDGETS, "").orEmpty()
             .split(";")
@@ -176,18 +176,21 @@ class Prefs(context: Context) {
                 val id = parts.getOrNull(0)?.toIntOrNull() ?: return@mapNotNull null
                 val height = parts.getOrNull(1)?.toIntOrNull() ?: return@mapNotNull null
                 val width = parts.getOrNull(2)?.toIntOrNull() ?: 0
-                val corners = parts.getOrNull(3)?.toIntOrNull() ?: 0
-                val top = parts.getOrNull(4)?.toIntOrNull() ?: -1
-                val fullscreen = parts.getOrNull(5) == "1"
-                val taps = when (parts.getOrNull(6)) {
+                // Earlier builds also stored rounded corners and fullscreen:
+                // "appWidgetId:heightDp:widthDp:cornerPercent:topDp:fullscreen:taps"
+                val legacy = parts.size == 7
+                val wasFullscreen = legacy && parts[5] == "1"
+                val top = if (wasFullscreen) -1 // placed again below the other widgets
+                else parts.getOrNull(if (legacy) 4 else 3)?.toIntOrNull() ?: -1
+                val taps = when (parts.getOrNull(if (legacy) 6 else 4)) {
                     "0" -> WidgetTaps.OFF
                     "2" -> WidgetTaps.DOUBLE_TAP
                     else -> WidgetTaps.ON
                 }
-                HomeWidget(id, height, width, corners, top, fullscreen, taps)
+                HomeWidget(id, height, width, top, taps)
             }
         set(value) = prefs.edit {
-            putString(HOME_WIDGETS, value.joinToString(";") { "${it.appWidgetId}:${it.heightDp}:${it.widthDp}:${it.cornerPercent}:${it.topDp}:${if (it.fullscreen) 1 else 0}:${it.taps.storedValue()}" })
+            putString(HOME_WIDGETS, value.joinToString(";") { "${it.appWidgetId}:${it.heightDp}:${it.widthDp}:${it.topDp}:${it.taps.storedValue()}" })
         }
 
     var homeAlignment: Int

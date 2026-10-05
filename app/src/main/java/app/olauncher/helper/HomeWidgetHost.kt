@@ -39,12 +39,6 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
     var onHomeGestureCancel: (() -> Unit)? = null
 
     /**
-     * Fullscreen widget: every touch also goes to the home screen, and only plain taps
-     * reach the widget, so swipes and long press for settings work as usual.
-     */
-    var isBackground = false
-
-    /**
      * Unless [WidgetTaps.ON], no touch reaches the widget's own views and every gesture also goes
      * to the home screen, as if the widget weren't there; with [WidgetTaps.DOUBLE_TAP] a double tap
      * is then passed on to the widget as a tap. Long press still selects it for editing.
@@ -88,7 +82,7 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
             isSecondTap = taps == WidgetTaps.DOUBLE_TAP &&
                     ev.eventTime - lastTapUpTime <= ViewConfiguration.getDoubleTapTimeout() &&
                     abs(ev.x - lastTapX) <= doubleTapSlop && abs(ev.y - lastTapY) <= doubleTapSlop
-            forwardingHome = (isBackground || taps != WidgetTaps.ON) && !isSecondTap
+            forwardingHome = taps != WidgetTaps.ON && !isSecondTap
             // The second tap belongs to the widget, so the home screen mustn't see a double tap (lock)
             if (isSecondTap) onHomeGestureCancel?.invoke()
         }
@@ -142,9 +136,8 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
         if (deliveringTap) return false
         trackLongPress(ev)
-        // Once the long press fired, take over the gesture so the widget doesn't also get a click.
-        // A fullscreen widget also gives up swipes, which belong to the home screen.
-        return taps != WidgetTaps.ON || hasPerformedLongPress || (isBackground && movedBeyondSlop)
+        // Once the long press fired, take over the gesture so the widget doesn't also get a click
+        return taps != WidgetTaps.ON || hasPerformedLongPress
     }
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {

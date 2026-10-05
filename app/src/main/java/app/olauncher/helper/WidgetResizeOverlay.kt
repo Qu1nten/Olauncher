@@ -23,13 +23,6 @@ class WidgetResizeOverlay(context: Context) : View(context) {
     var onMove: ((dy: Float) -> Unit)? = null
     var onMoveEnd: ((dy: Float) -> Unit)? = null
 
-    /** Matches the outline to the widget's rounded corners, see [widgetCornerRadius]. */
-    var cornerPercent = 0
-        set(value) {
-            field = value
-            invalidate()
-        }
-
     /** Puts the width handle on the start edge, for widgets aligned to the end of the screen. */
     var widthHandleOnStart = false
         set(value) {
@@ -70,7 +63,7 @@ class WidgetResizeOverlay(context: Context) : View(context) {
         val w = width.toFloat()
         val h = height.toFloat()
         val inset = borderPaint.strokeWidth / 2
-        val radius = widgetCornerRadius(width, height, cornerPercent)
+        val radius = 8 * density
         rect.set(inset, inset, w - inset, h - inset)
         canvas.drawRoundRect(rect, radius, radius, dimPaint)
         canvas.drawRoundRect(rect, radius, radius, borderPaint)
@@ -122,7 +115,3 @@ class WidgetResizeOverlay(context: Context) : View(context) {
         return true
     }
 }
-
-/** Corner radius for a widget of this size: [percent] of the way to fully rounded short sides. */
-fun widgetCornerRadius(width: Int, height: Int, percent: Int): Float =
-    minOf(width, height) / 2f * percent.coerceIn(0, 100) / 100f

@@ -5,9 +5,7 @@ import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
-import android.content.res.ColorStateList
 import android.content.res.Configuration
-import android.graphics.Outline
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
@@ -15,10 +13,8 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewOutlineProvider
 import android.view.WindowInsets
 import android.widget.FrameLayout
-import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.RequiresApi
@@ -54,7 +50,6 @@ import app.olauncher.helper.openCameraApp
 import app.olauncher.helper.openDialerApp
 import app.olauncher.helper.setPlainWallpaperByTheme
 import app.olauncher.helper.WidgetResizeOverlay
-import app.olauncher.helper.widgetCornerRadius
 import app.olauncher.helper.showToast
 import app.olauncher.listener.OnSwipeTouchListener
 import app.olauncher.listener.ViewSwipeTouchListener
@@ -438,7 +433,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         shownWidgets = state
 
         binding.widgetsLayout.removeAllViews()
-        binding.wallpaperWidgetLayout.removeAllViews()
         widgetViews.clear()
         editViews = emptyList()
         val widgets = placeNewWidgets(state.first)
@@ -447,10 +441,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             hostView.taps = widget.taps
             hostView.homeGestures = { event -> homeGestureListener.onTouch(binding.mainLayout, event) }
             hostView.onHomeGestureCancel = { homeGestureListener.cancelGesture() }
-            if (widget.fullscreen) {
-                showFullscreenWidget(hostView)
-                continue
-            }
             hostView.updateSize(widget.widthDp.takeIf { it > 0 } ?: fullWidgetWidthDp(), widget.heightDp)
             hostView.onLongPress = { startEditingWidget(widget.appWidgetId) }
             hostView.onDrag = { dy -> dragWidget(widget.appWidgetId, dy) }
@@ -463,13 +453,11 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
                 widget.heightDp.dpToPx(),
                 (prefs.homeAlignment and Gravity.RELATIVE_HORIZONTAL_GRAVITY_MASK) or Gravity.TOP
             ).apply { topMargin = widget.topDp.dpToPx() }
-            setWidgetCorners(frame, widget.cornerPercent)
             binding.widgetsLayout.addView(frame)
             widgetViews += WidgetViews(widget.appWidgetId, frame, hostView)
         }
         editingWidgetId?.let { showWidgetEditViews(it) }
         binding.widgetsLayout.isVisible = binding.widgetsLayout.childCount > 0
-        binding.wallpaperWidgetLayout.isVisible = binding.wallpaperWidgetLayout.childCount > 0
     }
 
     private fun createWidgetHostView(widget: HomeWidget): HomeWidgetHostView? {
@@ -485,25 +473,11 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         }
     }
 
-    // Fills the screen behind the clock and apps. Home gestures keep working on top of it,
-    // so it's turned back into a normal widget from settings rather than by long pressing it.
-    private fun showFullscreenWidget(hostView: HomeWidgetHostView) {
-        val metrics = resources.displayMetrics
-        hostView.setPadding(0, 0, 0, 0)
-        hostView.updateSize(metrics.widthPixels.pxToDp(), metrics.heightPixels.pxToDp())
-        hostView.isBackground = true
-        binding.wallpaperWidgetLayout.addView(
-            hostView,
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        )
-    }
-
     // Gives widgets that have no position yet one below the lowest widget, and saves it
     private fun placeNewWidgets(widgets: List<HomeWidget>): List<HomeWidget> {
         if (widgets.none { it.topDp < 0 }) return widgets
         val areaHeightDp = widgetAreaHeightPx().pxToDp()
-        var nextTopDp = widgets.filter { it.topDp >= 0 && !it.fullscreen }.maxOfOrNull { it.topDp + it.heightDp + 8 }
+        var nextTopDp = widgets.filter { it.topDp >= 0 }.maxOfOrNull { it.topDp + it.heightDp + 8 }
             ?: Constants.WIDGET_FIRST_TOP_DP
         val placed = widgets.map { widget ->
             if (widget.topDp >= 0) return@map widget
@@ -533,20 +507,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         shownWidgets = prefs.homeWidgets to editingWidgetId
     }
 
-    private fun setWidgetCorners(frame: View, percent: Int) {
-        if (percent <= 0) {
-            frame.clipToOutline = false
-            frame.outlineProvider = ViewOutlineProvider.BACKGROUND
-            return
-        }
-        frame.outlineProvider = object : ViewOutlineProvider() {
-            override fun getOutline(view: View, outline: Outline) {
-                outline.setRoundRect(0, 0, view.width, view.height, widgetCornerRadius(view.width, view.height, percent))
-            }
-        }
-        frame.clipToOutline = true
-    }
-
     private fun startEditingWidget(appWidgetId: Int) {
         if (editingWidgetId == appWidgetId) return
         editingWidgetId = appWidgetId
@@ -567,7 +527,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         val views = widgetViews.find { it.appWidgetId == appWidgetId } ?: return
         val widget = prefs.homeWidgets.find { it.appWidgetId == appWidgetId } ?: return
 
-        val overlay = createResizeOverlay(views, widget)
+        val overlay = createResizeOverlay(views)
         views.frame.addView(overlay, FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         val bar = createWidgetEditBar(views, widget)
         binding.widgetsLayout.addView(bar)
@@ -594,12 +554,11 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         bar.translationY = 0f
     }
 
-    private fun createResizeOverlay(views: WidgetViews, widget: HomeWidget): WidgetResizeOverlay {
+    private fun createResizeOverlay(views: WidgetViews): WidgetResizeOverlay {
         val frame = views.frame
         val overlay = WidgetResizeOverlay(requireContext()).apply {
             color = requireContext().getColorFromAttr(R.attr.primaryColor)
             widthHandleOnStart = prefs.homeAlignment == Gravity.END
-            cornerPercent = widget.cornerPercent
         }
 
         var startWidth = 0
@@ -641,38 +600,12 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
     private fun createWidgetEditBar(views: WidgetViews, widget: HomeWidget): View {
         val bar = LayoutWidgetEditBarBinding.inflate(layoutInflater, binding.widgetsLayout, false)
-        val color = ColorStateList.valueOf(requireContext().getColorFromAttr(R.attr.primaryColor))
-        bar.widgetCorners.progressTintList = color
-        bar.widgetCorners.thumbTintList = color
-        bar.widgetCorners.progress = widget.cornerPercent
-        bar.widgetCornersValue.text = getString(R.string.percent, widget.cornerPercent)
-        bar.widgetCorners.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar, progress: Int, fromUser: Boolean) {
-                bar.widgetCornersValue.text = getString(R.string.percent, progress)
-                setWidgetCorners(views.frame, progress)
-                (editViews.firstOrNull() as? WidgetResizeOverlay)?.cornerPercent = progress
-            }
-
-            override fun onStartTrackingTouch(seekBar: SeekBar) = Unit
-
-            override fun onStopTrackingTouch(seekBar: SeekBar) {
-                updateWidget(views.appWidgetId) { it.copy(cornerPercent = seekBar.progress) }
-            }
-        })
-
         bar.widgetInteractive.text = getString(widget.taps.label)
         bar.widgetInteractive.setOnClickListener {
             val taps = views.hostView.taps.next()
             views.hostView.taps = taps
             updateWidget(views.appWidgetId) { it.copy(taps = taps) }
             bar.widgetInteractive.text = getString(taps.label)
-        }
-
-        bar.widgetFullscreen.setOnClickListener {
-            // Only one widget can be the background
-            editingWidgetId = null
-            prefs.homeWidgets = prefs.homeWidgets.map { it.copy(fullscreen = it.appWidgetId == views.appWidgetId) }
-            populateWidgets()
         }
 
         bar.widgetRemove.setOnClickListener {
