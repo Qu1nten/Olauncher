@@ -6,11 +6,13 @@ import android.appwidget.AppWidgetProviderInfo
 import android.content.Context
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.util.SizeF
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.ViewConfiguration
 import app.olauncher.data.Constants
+import app.olauncher.data.WidgetTaps
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -43,20 +45,30 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
     var isBackground = false
 
     /**
-     * When false, no touch reaches the widget's own views and every gesture also goes to the
-     * home screen, as if the widget weren't there. Long press still selects it for editing.
+     * Unless [WidgetTaps.ON], no touch reaches the widget's own views and every gesture also goes
+     * to the home screen, as if the widget weren't there; with [WidgetTaps.DOUBLE_TAP] a double tap
+     * is then passed on to the widget as a tap. Long press still selects it for editing.
      */
-    var interactive = true
+    var taps = WidgetTaps.ON
 
     // Decided when a touch starts, so switching settings mid-gesture can't half-forward it
     private var forwardingHome = false
 
     private val touchSlop = ViewConfiguration.get(context).scaledTouchSlop
+    private val doubleTapSlop = ViewConfiguration.get(context).scaledDoubleTapSlop
     private var downX = 0f
     private var downY = 0f
     private var downRawY = 0f
     private var hasPerformedLongPress = false
     private var movedBeyondSlop = false
+
+    // Double tap: when and where the last plain tap ended, and whether this touch is the second tap
+    private var lastTapUpTime = 0L
+    private var lastTapX = 0f
+    private var lastTapY = 0f
+    private var isSecondTap = false
+    // Set while a double tap is replayed to the widget as a single tap
+    private var deliveringTap = false
 
     private val longPressRunnable = Runnable {
         hasPerformedLongPress = true
@@ -72,19 +84,71 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
-        if (ev.actionMasked == MotionEvent.ACTION_DOWN) forwardingHome = isBackground || !interactive
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) {
+            isSecondTap = taps == WidgetTaps.DOUBLE_TAP &&
+                    ev.eventTime - lastTapUpTime <= ViewConfiguration.getDoubleTapTimeout() &&
+                    abs(ev.x - lastTapX) <= doubleTapSlop && abs(ev.y - lastTapY) <= doubleTapSlop
+            forwardingHome = (isBackground || taps != WidgetTaps.ON) && !isSecondTap
+            // The second tap belongs to the widget, so the home screen mustn't see a double tap (lock)
+            if (isSecondTap) onHomeGestureCancel?.invoke()
+        }
         if (forwardingHome) homeGestures?.invoke(ev)
-        return super.dispatchTouchEvent(ev)
+
+        val wasPlainTap = !movedBeyondSlop && !hasPerformedLongPress
+        val handled = super.dispatchTouchEvent(ev)
+        if (taps == WidgetTaps.DOUBLE_TAP) trackDoubleTap(ev, wasPlainTap)
+        return handled
+    }
+
+    private fun trackDoubleTap(ev: MotionEvent, wasPlainTap: Boolean) {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_UP -> when {
+                !wasPlainTap -> lastTapUpTime = 0L
+                isSecondTap -> {
+                    lastTapUpTime = 0L
+                    val x = ev.x
+                    val y = ev.y
+                    // After this touch has finished dispatching
+                    post { tapWidget(x, y) }
+                }
+
+                else -> {
+                    lastTapUpTime = ev.eventTime
+                    lastTapX = ev.x
+                    lastTapY = ev.y
+                }
+            }
+
+            MotionEvent.ACTION_CANCEL -> lastTapUpTime = 0L
+        }
+    }
+
+    // Replays a tap at this point to the widget's own views, which do whatever a tap does there
+    private fun tapWidget(x: Float, y: Float) {
+        val time = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(time, time, MotionEvent.ACTION_DOWN, x, y, 0)
+        val up = MotionEvent.obtain(time, time, MotionEvent.ACTION_UP, x, y, 0)
+        deliveringTap = true
+        try {
+            super.dispatchTouchEvent(down)
+            super.dispatchTouchEvent(up)
+        } finally {
+            deliveringTap = false
+            down.recycle()
+            up.recycle()
+        }
     }
 
     override fun onInterceptTouchEvent(ev: MotionEvent): Boolean {
+        if (deliveringTap) return false
         trackLongPress(ev)
         // Once the long press fired, take over the gesture so the widget doesn't also get a click.
         // A fullscreen widget also gives up swipes, which belong to the home screen.
-        return !interactive || hasPerformedLongPress || (isBackground && movedBeyondSlop)
+        return taps != WidgetTaps.ON || hasPerformedLongPress || (isBackground && movedBeyondSlop)
     }
 
     override fun onTouchEvent(ev: MotionEvent): Boolean {
+        if (deliveringTap) return true
         // Reached when no child handles the touch, or after the long press took over the gesture.
         // Keep receiving events so long press works on empty areas and the widget can be dragged.
         trackLongPress(ev)

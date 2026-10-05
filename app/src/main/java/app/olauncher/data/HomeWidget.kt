@@ -1,5 +1,8 @@
 package app.olauncher.data
 
+import androidx.annotation.StringRes
+import app.olauncher.R
+
 /** A widget placed on the home screen, identified by its bound app widget id. */
 data class HomeWidget(
     val appWidgetId: Int,
@@ -12,6 +15,28 @@ data class HomeWidget(
     val topDp: Int = -1,
     // Fills the whole screen behind the clock and apps, like a wallpaper
     val fullscreen: Boolean = false,
-    // Off means taps never reach the widget; it's only there to look at
-    val interactive: Boolean = true,
+    val taps: WidgetTaps = WidgetTaps.ON,
 )
+
+/** How touches on a widget are handled. */
+enum class WidgetTaps {
+    /** The widget gets every touch, like in any launcher. */
+    ON,
+
+    /** Swipes, long press and single taps go to the home screen; a double tap clicks the widget. */
+    DOUBLE_TAP,
+
+    /** Every touch goes to the home screen, as if the widget weren't there. */
+    OFF,
+}
+
+/** The setting after this one when its switch is tapped: on, double tap, off, and around again. */
+fun WidgetTaps.next(): WidgetTaps = WidgetTaps.entries[(ordinal + 1) % WidgetTaps.entries.size]
+
+@get:StringRes
+val WidgetTaps.label: Int
+    get() = when (this) {
+        WidgetTaps.ON -> R.string.on
+        WidgetTaps.DOUBLE_TAP -> R.string.double_tap
+        WidgetTaps.OFF -> R.string.off
+    }

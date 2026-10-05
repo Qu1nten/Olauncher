@@ -24,6 +24,9 @@ import app.olauncher.MainViewModel
 import app.olauncher.R
 import app.olauncher.data.Constants
 import app.olauncher.data.Prefs
+import app.olauncher.data.WidgetTaps
+import app.olauncher.data.label
+import app.olauncher.data.next
 import app.olauncher.databinding.DialogTextSizeBinding
 import app.olauncher.databinding.FragmentSettingsBinding
 import app.olauncher.helper.appUsagePermissionGranted
@@ -270,15 +273,14 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
             requireContext().showToast(getString(R.string.fullscreen_widget_hint), Toast.LENGTH_LONG)
             return
         }
-        prefs.homeWidgets = widgets.map { if (it.fullscreen) it.copy(interactive = !it.interactive) else it }
+        prefs.homeWidgets = widgets.map { if (it.fullscreen) it.copy(taps = it.taps.next()) else it }
         populateFullscreenWidget()
     }
 
     private fun populateFullscreenWidget() {
         val fullscreenWidget = prefs.homeWidgets.find { it.fullscreen }
         binding.fullscreenWidget.text = getString(if (fullscreenWidget != null) R.string.on else R.string.off)
-        binding.fullscreenWidgetInteractive.text =
-            getString(if (fullscreenWidget?.interactive != false) R.string.on else R.string.off)
+        binding.fullscreenWidgetInteractive.text = getString((fullscreenWidget?.taps ?: WidgetTaps.ON).label)
     }
 
     private fun showDateTimeMenu(anchor: View) {

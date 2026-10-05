@@ -166,7 +166,8 @@ class Prefs(context: Context) {
         get() = prefs.getInt(HOME_APPS_NUM, 4)
         set(value) = prefs.edit { putInt(HOME_APPS_NUM, value).apply() }
 
-    // Stored in drawing order as "appWidgetId:heightDp:widthDp:cornerPercent:topDp:fullscreen:interactive" entries separated by ';'
+    // Stored in drawing order as "appWidgetId:heightDp:widthDp:cornerPercent:topDp:fullscreen:taps" entries
+    // separated by ';', where taps is 1 (on), 2 (double tap) or 0 (off)
     var homeWidgets: List<HomeWidget>
         get() = prefs.getString(HOME_WIDGETS, "").orEmpty()
             .split(";")
@@ -178,11 +179,15 @@ class Prefs(context: Context) {
                 val corners = parts.getOrNull(3)?.toIntOrNull() ?: 0
                 val top = parts.getOrNull(4)?.toIntOrNull() ?: -1
                 val fullscreen = parts.getOrNull(5) == "1"
-                val interactive = parts.getOrNull(6) != "0"
-                HomeWidget(id, height, width, corners, top, fullscreen, interactive)
+                val taps = when (parts.getOrNull(6)) {
+                    "0" -> WidgetTaps.OFF
+                    "2" -> WidgetTaps.DOUBLE_TAP
+                    else -> WidgetTaps.ON
+                }
+                HomeWidget(id, height, width, corners, top, fullscreen, taps)
             }
         set(value) = prefs.edit {
-            putString(HOME_WIDGETS, value.joinToString(";") { "${it.appWidgetId}:${it.heightDp}:${it.widthDp}:${it.cornerPercent}:${it.topDp}:${if (it.fullscreen) 1 else 0}:${if (it.interactive) 1 else 0}" })
+            putString(HOME_WIDGETS, value.joinToString(";") { "${it.appWidgetId}:${it.heightDp}:${it.widthDp}:${it.cornerPercent}:${it.topDp}:${if (it.fullscreen) 1 else 0}:${it.taps.storedValue()}" })
         }
 
     var homeAlignment: Int
@@ -670,4 +675,10 @@ class Prefs(context: Context) {
     fun getAppRenameLabel(appPackage: String): String = prefs.getString(appPackage, "").toString()
 
     fun setAppRenameLabel(appPackage: String, renameLabel: String) = prefs.edit { putString(appPackage, renameLabel) }
+}
+
+private fun WidgetTaps.storedValue() = when (this) {
+    WidgetTaps.ON -> 1
+    WidgetTaps.DOUBLE_TAP -> 2
+    WidgetTaps.OFF -> 0
 }

@@ -34,6 +34,8 @@ import app.olauncher.R
 import app.olauncher.data.AppModel
 import app.olauncher.data.Constants
 import app.olauncher.data.HomeWidget
+import app.olauncher.data.label
+import app.olauncher.data.next
 import app.olauncher.data.Prefs
 import app.olauncher.databinding.FragmentHomeBinding
 import app.olauncher.databinding.LayoutWidgetEditBarBinding
@@ -442,7 +444,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         val widgets = placeNewWidgets(state.first)
         for (widget in widgets) {
             val hostView = createWidgetHostView(widget) ?: continue
-            hostView.interactive = widget.interactive
+            hostView.taps = widget.taps
             hostView.homeGestures = { event -> homeGestureListener.onTouch(binding.mainLayout, event) }
             hostView.onHomeGestureCancel = { homeGestureListener.cancelGesture() }
             if (widget.fullscreen) {
@@ -658,15 +660,12 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             }
         })
 
-        fun populateInteractive(interactive: Boolean) {
-            bar.widgetInteractive.text = getString(if (interactive) R.string.on else R.string.off)
-        }
-        populateInteractive(widget.interactive)
+        bar.widgetInteractive.text = getString(widget.taps.label)
         bar.widgetInteractive.setOnClickListener {
-            val interactive = !views.hostView.interactive
-            views.hostView.interactive = interactive
-            updateWidget(views.appWidgetId) { it.copy(interactive = interactive) }
-            populateInteractive(interactive)
+            val taps = views.hostView.taps.next()
+            views.hostView.taps = taps
+            updateWidget(views.appWidgetId) { it.copy(taps = taps) }
+            bar.widgetInteractive.text = getString(taps.label)
         }
 
         bar.widgetFullscreen.setOnClickListener {
