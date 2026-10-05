@@ -499,7 +499,10 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     // drawn it. Apps like Google Photos pick new content for a new widget; if the app never draws
     // the copy, the current widget simply stays.
     private fun reloadWidget(views: WidgetViews, widget: HomeWidget) {
-        if (views.appWidgetId in pendingReloads) return
+        if (views.appWidgetId in pendingReloads) {
+            reloadDiagnostic("still waiting for the previous copy")
+            return
+        }
         val info = appWidgetManager.getAppWidgetInfo(views.appWidgetId) ?: return
         val newId = widgetHost.allocateAppWidgetId()
         val bound = try {
@@ -508,20 +511,24 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             e.printStackTrace()
             false
         }
-        // Widgets that have to be set up by hand can't be copied quietly
-        if (!bound || info.needsConfiguration()) {
+        if (!bound) {
             widgetHost.deleteAppWidgetId(newId)
-            if (!bound && !reloadPermissionToastShown) {
+            reloadDiagnostic("not allowed to create a copy")
+            if (!reloadPermissionToastShown) {
                 reloadPermissionToastShown = true
                 requireContext().showToast(getString(R.string.reload_needs_permission), Toast.LENGTH_LONG)
             }
             return
         }
+        // A widget with a setup screen gets no setup for the copy; if its app won't draw it unset,
+        // the copy times out and the current widget stays
         val newHostView = createWidgetHostView(newId)
         if (newHostView == null) {
             widgetHost.deleteAppWidgetId(newId)
+            reloadDiagnostic("couldn't create the copy")
             return
         }
+        reloadDiagnostic(if (info.needsConfiguration()) "copy created (widget has a setup screen)" else "copy created")
         setUpHostView(newHostView, newId, widget)
         newHostView.alpha = 0f
         views.frame.addView(newHostView, 0, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
@@ -535,6 +542,12 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         }
     }
 
+    // TEMPORARY: shows what each reload did while testing it with Google Photos
+    private fun reloadDiagnostic(message: String) {
+        if (_binding == null) return
+        Toast.makeText(requireContext(), "Widget reload: $message", Toast.LENGTH_SHORT).show()
+    }
+
     private fun finishReload(views: WidgetViews, newHostView: HomeWidgetHostView, newId: Int, drawn: Boolean) {
         val oldId = views.appWidgetId
         pendingReloads.remove(oldId)
@@ -543,8 +556,10 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         if (!drawn || !stillShown || editingWidgetId == oldId) {
             (newHostView.parent as? ViewGroup)?.removeView(newHostView)
             widgetHost.deleteAppWidgetId(newId)
+            reloadDiagnostic(if (!drawn) "the app didn't draw the copy" else "skipped, widgets changed meanwhile")
             return
         }
+        reloadDiagnostic("swapped to the new copy")
         prefs.homeWidgets = prefs.homeWidgets.map { if (it.appWidgetId == oldId) it.copy(appWidgetId = newId) else it }
         shownWidgets = prefs.homeWidgets to editingWidgetId
         widgetViews[widgetViews.indexOf(views)] = WidgetViews(newId, views.frame, newHostView)
