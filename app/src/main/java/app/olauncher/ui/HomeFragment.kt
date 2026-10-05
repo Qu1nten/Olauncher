@@ -22,6 +22,8 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.bundleOf
 import androidx.core.view.isVisible
 import androidx.core.view.setPadding
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
@@ -74,6 +76,13 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     // Whether slideshow widgets should be changing photos: only while the home screen is showing
     private var slideshowsRunning = false
 
+    // When the whole launcher is out of view (screen off, an app opened), slideshows switch photo
+    // unseen. Not on this fragment stopping: opening the app drawer or settings stops it too, while
+    // their opening animation still shows the home screen.
+    private val launcherStopObserver = LifecycleEventObserver { _, event ->
+        if (event == Lifecycle.Event.ON_STOP) slideshowViews().forEach { it.showNextUnseen() }
+    }
+
     private val widgetViews = mutableListOf<WidgetViews>()
     // Resize overlay and edit bar of the widget being edited
     private var editViews: List<View> = emptyList()
@@ -98,6 +107,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         widgetHost = HomeWidgetHost(requireContext().applicationContext)
         appWidgetManager = AppWidgetManager.getInstance(requireContext())
 
+        requireActivity().lifecycle.addObserver(launcherStopObserver)
         initObservers()
         setHomeAlignment(prefs.homeAlignment)
         initSwipeTouchListener()
@@ -114,8 +124,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     }
 
     override fun onStop() {
-        // Out of view now, so slideshows can switch photo without it being seen
-        slideshowViews().forEach { it.showNextUnseen() }
         try {
             widgetHost.stopListening()
         } catch (e: Exception) {
@@ -1053,6 +1061,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
     override fun onDestroyView() {
         super.onDestroyView()
+        requireActivity().lifecycle.removeObserver(launcherStopObserver)
         shownWidgets = null
         editingWidgetId = null
         widgetViews.clear()
