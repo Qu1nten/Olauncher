@@ -114,6 +114,8 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     }
 
     override fun onStop() {
+        // Out of view now, so slideshows can switch photo without it being seen
+        slideshowViews().forEach { it.showNextUnseen() }
         try {
             widgetHost.stopListening()
         } catch (e: Exception) {
@@ -134,7 +136,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         super.onResume()
         slideshowsRunning = true
         populateHomeScreen(false)
-        // Slideshows move on to their next photo after the home screen was away
         slideshowViews().forEach { it.resume() }
         viewModel.isOlauncherDefault()
         if (prefs.showStatusBar) showStatusBar()

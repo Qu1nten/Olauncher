@@ -1,7 +1,11 @@
 package app.olauncher.helper
 
 import android.content.Context
+import android.graphics.Outline
+import android.os.Build
 import android.view.Gravity
+import android.view.View
+import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
@@ -13,7 +17,8 @@ import java.util.concurrent.Future
 /**
  * The launcher's own photo slideshow widget. It shares the touch handling of app widgets
  * (editing, dragging, the tap settings) and shows its photos in random order with a crossfade,
- * moving on every [intervalSeconds] while resumed, each time the home screen comes back, and on tap.
+ * moving on every [intervalSeconds] while resumed and on tap. Each time the home screen is hidden
+ * it switches photo unseen, so a new one is already showing on return.
  */
 class SlideshowView(context: Context, private val photos: List<File>) : HomeWidgetHostView(context) {
 
@@ -31,11 +36,21 @@ class SlideshowView(context: Context, private val photos: List<File>) : HomeWidg
     private var order = photos.shuffled()
     private var position = -1
     private var running = false
-    private var wasPaused = false
     private var loading: Future<*>? = null
     private val advance = Runnable { showNext() }
 
     init {
+        // The same rounded corners as other widgets
+        val radius = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+            resources.getDimension(android.R.dimen.system_app_widget_background_radius)
+        else 16 * resources.displayMetrics.density
+        outlineProvider = object : ViewOutlineProvider() {
+            override fun getOutline(view: View, outline: Outline) {
+                outline.setRoundRect(0, 0, view.width, view.height, radius)
+            }
+        }
+        clipToOutline = true
+
         if (photos.isEmpty()) {
             addView(TextView(context).apply {
                 setText(R.string.slideshow_empty)
@@ -51,18 +66,20 @@ class SlideshowView(context: Context, private val photos: List<File>) : HomeWidg
     // Not an app widget, so there's no app to tell its size
     override fun updateSize(widthDp: Int, heightDp: Int) = Unit
 
-    /** The home screen is showing: coming back to it moves on to the next photo. */
+    /** The home screen is showing: the next photo comes a full interval from now. */
     fun resume() {
-        if (wasPaused) showNext()
-        wasPaused = false
         running = true
         scheduleNext()
     }
 
     fun pause() {
-        wasPaused = true
         running = false
         removeCallbacks(advance)
+    }
+
+    /** The home screen is out of view: switch now, without a fade, so it's new on return. */
+    fun showNextUnseen() {
+        showNext(crossfade = false)
     }
 
     private fun scheduleNext() {
@@ -70,7 +87,7 @@ class SlideshowView(context: Context, private val photos: List<File>) : HomeWidg
         if (running && intervalSeconds > 0) postDelayed(advance, intervalSeconds * 1000L)
     }
 
-    private fun showNext() {
+    private fun showNext(crossfade: Boolean = true) {
         if (photos.isEmpty()) return
         position++
         if (position >= order.size) {
@@ -85,7 +102,10 @@ class SlideshowView(context: Context, private val photos: List<File>) : HomeWidg
         loading?.cancel(false)
         loading = loader.submit(Runnable {
             val bitmap = Slideshows.loadPhoto(file, targetWidth, targetHeight) ?: return@Runnable
-            post { changeWithCrossfade { image.setImageBitmap(bitmap) } }
+            post {
+                if (crossfade) changeWithCrossfade { image.setImageBitmap(bitmap) }
+                else image.setImageBitmap(bitmap)
+            }
         })
         scheduleNext()
     }
