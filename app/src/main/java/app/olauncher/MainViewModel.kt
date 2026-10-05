@@ -5,6 +5,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
+import android.net.Uri
 import android.os.Build
 import android.os.UserHandle
 import android.os.UserManager
@@ -19,8 +20,10 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import app.olauncher.data.AppModel
 import app.olauncher.data.Constants
+import app.olauncher.data.HomeWidget
 import app.olauncher.data.Prefs
 import app.olauncher.helper.SingleLiveEvent
+import app.olauncher.helper.Slideshows
 import app.olauncher.helper.WallpaperWorker
 import app.olauncher.helper.formattedTimeSpent
 import app.olauncher.helper.getAppsList
@@ -32,7 +35,9 @@ import app.olauncher.helper.isPackageInstalled
 import app.olauncher.helper.isPrivateSpaceLocked
 import app.olauncher.helper.showToast
 import app.olauncher.helper.usageStats.EventLogWrapper
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
 
@@ -64,6 +69,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val resetLauncherLiveData = SingleLiveEvent<Unit?>()
     val addHomeWidget = SingleLiveEvent<Unit?>()
     val pickCustomFont = SingleLiveEvent<Unit?>()
+    // Photo slideshow widget: pick photos for the slideshow with this id, or a new one for 0
+    val pickSlideshowPhotos = SingleLiveEvent<Int>()
+    val slideshowPhotosChanged = SingleLiveEvent<Unit?>()
     // Home button for recents feature disabled
     // val showRecentApps = SingleLiveEvent<Unit?>()
 
@@ -352,6 +360,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun refreshHome(appCountUpdated: Boolean) {
         refreshHome.value = appCountUpdated
+    }
+
+    /**
+     * Stores copies of the picked photos for a slideshow widget, adding the widget when [slideshowId]
+     * is 0 or replacing that slideshow's photos otherwise. Runs here so it survives the activity restarting.
+     */
+    fun setSlideshowPhotos(slideshowId: Int, uris: List<Uri>) {
+        appContext.showToast(appContext.getString(R.string.adding_photos))
+        viewModelScope.launch {
+            val id = if (Slideshows.isSlideshow(slideshowId)) slideshowId else Slideshows.newId(prefs.homeWidgets)
+            val count = withContext(Dispatchers.IO) {
+                Slideshows.setPhotos(appContext, id, uris.take(Constants.SLIDESHOW_MAX_PHOTOS))
+            }
+            if (count == 0) {
+                appContext.showToast(appContext.getString(R.string.photos_not_added))
+                return@launch
+            }
+            if (id != slideshowId) prefs.homeWidgets += HomeWidget(id, Constants.SLIDESHOW_HEIGHT_DP)
+            appContext.showToast(appContext.getString(R.string.photos_added, count))
+            refreshHome(false)
+            slideshowPhotosChanged.call()
+        }
     }
 
     fun toggleDateTime() {

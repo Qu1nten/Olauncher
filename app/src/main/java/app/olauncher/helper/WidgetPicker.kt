@@ -22,16 +22,15 @@ import app.olauncher.databinding.ItemWidgetPickerBinding
 private const val PREVIEW_MAX_HEIGHT_DP = 180
 
 /**
- * Lists every widget on the device, grouped by app, each with its preview.
- * Returns null when there are no widgets to show.
+ * Lists the launcher's own photo slideshow, then every widget on the device grouped by app,
+ * each with its preview.
  */
-fun Context.showWidgetPicker(onPick: (AppWidgetProviderInfo) -> Unit): OlDialog? {
+fun Context.showWidgetPicker(onPickSlideshow: () -> Unit, onPick: (AppWidgetProviderInfo) -> Unit): OlDialog {
     val appWidgetManager = AppWidgetManager.getInstance(this)
     val providers = getSystemService(UserManager::class.java).userProfiles
         .flatMap { runCatching { appWidgetManager.getInstalledProvidersForProfile(it) }.getOrDefault(emptyList()) }
-    if (providers.isEmpty()) return null
 
-    val rows = providers
+    val rows = listOf(WidgetPickerRow.Header(getString(R.string.app_name)), WidgetPickerRow.Slideshow) + providers
         .map { info -> Triple(info, appName(info), widgetLabel(info)) }
         .sortedWith(compareBy({ it.second.lowercase() }, { it.third.lowercase() }))
         .groupBy { it.second }
@@ -41,10 +40,17 @@ fun Context.showWidgetPicker(onPick: (AppWidgetProviderInfo) -> Unit): OlDialog?
         }
 
     lateinit var dialog: OlDialog
-    val adapter = WidgetPickerAdapter(rows) { info ->
-        dialog.dismiss()
-        onPick(info)
-    }
+    val adapter = WidgetPickerAdapter(
+        rows,
+        onPickSlideshow = {
+            dialog.dismiss()
+            onPickSlideshow()
+        },
+        onPick = { info ->
+            dialog.dismiss()
+            onPick(info)
+        },
+    )
     dialog = createDialog(R.string.choose_widget, R.string.close, content = { container ->
         RecyclerView(container.context).apply {
             layoutManager = LinearLayoutManager(container.context)
@@ -80,10 +86,12 @@ private fun Context.widgetLabel(info: AppWidgetProviderInfo): String {
 private sealed class WidgetPickerRow {
     data class Header(val appName: String) : WidgetPickerRow()
     data class Widget(val info: AppWidgetProviderInfo, val label: String) : WidgetPickerRow()
+    data object Slideshow : WidgetPickerRow()
 }
 
 private class WidgetPickerAdapter(
     private val rows: List<WidgetPickerRow>,
+    private val onPickSlideshow: () -> Unit,
     private val onPick: (AppWidgetProviderInfo) -> Unit,
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
@@ -106,6 +114,7 @@ private class WidgetPickerAdapter(
         when (val row = rows[position]) {
             is WidgetPickerRow.Header -> (holder.itemView as TextView).text = row.appName
             is WidgetPickerRow.Widget -> (holder as WidgetViewHolder).bind(row)
+            is WidgetPickerRow.Slideshow -> (holder as WidgetViewHolder).bindSlideshow()
         }
     }
 
@@ -117,6 +126,23 @@ private class WidgetPickerAdapter(
             binding.previewContainer.removeAllViews()
             binding.previewContainer.addView(createPreview(row.info))
             binding.root.setOnClickListener { onPick(row.info) }
+        }
+
+        fun bindSlideshow() {
+            val context = binding.root.context
+            binding.tvWidgetLabel.text = context.getString(R.string.photo_slideshow) + " · " +
+                    context.getString(R.string.slideshow_picker_hint)
+            binding.tvWidgetLabel.visibility = View.VISIBLE
+            binding.previewContainer.removeAllViews()
+            binding.previewContainer.addView(ImageView(context).apply {
+                setImageResource(R.mipmap.ic_launcher)
+                layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.CENTER
+                )
+            })
+            binding.root.setOnClickListener { onPickSlideshow() }
         }
 
         private fun createPreview(info: AppWidgetProviderInfo): View {

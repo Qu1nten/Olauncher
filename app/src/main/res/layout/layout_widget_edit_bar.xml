@@ -6,6 +6,67 @@
     android:layout_height="wrap_content"
     android:orientation="vertical">
 
+    <!-- Slideshow widget only -->
+    <LinearLayout
+        android:id="@+id/slideshowIntervalRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <TextView
+            style="@style/TextSmall"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:paddingVertical="10dp"
+            android:text="@string/change_every"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/slideshowInterval"
+            style="@style/TextSmallBold"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:focusable="true"
+            android:paddingVertical="10dp"
+            android:paddingStart="16dp"
+            android:textSize="16sp"
+            tools:ignore="RtlSymmetry"
+            tools:text="5 s" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/slideshowPhotosRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone">
+
+        <TextView
+            style="@style/TextSmall"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:paddingVertical="10dp"
+            android:text="@string/photos"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/slideshowPhotos"
+            style="@style/TextSmallBold"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:focusable="true"
+            android:paddingVertical="10dp"
+            android:paddingStart="16dp"
+            android:text="@string/change"
+            android:textSize="16sp"
+            tools:ignore="RtlSymmetry" />
+    </LinearLayout>
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

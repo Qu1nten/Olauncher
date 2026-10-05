@@ -19,6 +19,7 @@ import android.provider.Settings
 import android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
@@ -87,6 +88,12 @@ class MainActivity : AppCompatActivity() {
         recreate()
     }
 
+    // Slideshow widget whose photos are being picked; 0 while picking for a new one
+    private var pendingSlideshowId = 0
+    private val slideshowPhotoPicker = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
+        if (uris.isNotEmpty()) viewModel.setSlideshowPhotos(pendingSlideshowId, uris)
+    }
+
 //    override fun onBackPressed() {
 //        if (navController.currentDestination?.id != R.id.mainFragment)
 //            super.onBackPressed()
@@ -108,6 +115,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         if (prefs.boldFont) theme.applyStyle(R.style.BoldFontOverlay, true)
         if (isEinkDisplay() || isSystemAnimationsDisabled()) theme.applyStyle(R.style.NoAnimationOverlay, true)
+        pendingSlideshowId = savedInstanceState?.getInt(KEY_PENDING_SLIDESHOW_ID, 0) ?: 0
         pendingWidgetId = savedInstanceState?.getInt(KEY_PENDING_WIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
             ?: AppWidgetManager.INVALID_APPWIDGET_ID
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -158,6 +166,7 @@ class MainActivity : AppCompatActivity() {
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
         outState.putInt(KEY_PENDING_WIDGET_ID, pendingWidgetId)
+        outState.putInt(KEY_PENDING_SLIDESHOW_ID, pendingSlideshowId)
     }
 
     override fun onStart() {
@@ -247,6 +256,9 @@ class MainActivity : AppCompatActivity() {
         viewModel.addHomeWidget.observe(this) {
             openWidgetPicker()
         }
+        viewModel.pickSlideshowPhotos.observe(this) { slideshowId ->
+            pickSlideshowPhotos(slideshowId ?: 0)
+        }
         viewModel.pickCustomFont.observe(this) {
             // Font files have no reliable MIME type, so any file is offered and checked after picking
             try {
@@ -323,8 +335,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openWidgetPicker() {
-        if (showWidgetPicker { bindHomeWidget(it) } == null)
-            showToast(getString(R.string.no_widgets_found))
+        showWidgetPicker(onPickSlideshow = { pickSlideshowPhotos(0) }, onPick = { bindHomeWidget(it) })
+    }
+
+    private fun pickSlideshowPhotos(slideshowId: Int) {
+        pendingSlideshowId = slideshowId
+        try {
+            slideshowPhotoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun bindHomeWidget(info: AppWidgetProviderInfo) {
@@ -508,6 +528,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val KEY_PENDING_WIDGET_ID = "pending_widget_id"
+        private const val KEY_PENDING_SLIDESHOW_ID = "pending_slideshow_id"
     }
 
     @Deprecated("Deprecated in Java")

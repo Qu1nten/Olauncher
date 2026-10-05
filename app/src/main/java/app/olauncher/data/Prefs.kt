@@ -44,6 +44,7 @@ class Prefs(context: Context) {
     private val LAUNCHER_RESTART_TIMESTAMP = "LAUNCHER_RECREATE_TIMESTAMP"
     private val SHOWN_ON_DAY_OF_YEAR = "SHOWN_ON_DAY_OF_YEAR"
     private val HOME_WIDGETS = "HOME_WIDGETS"
+    private val SLIDESHOW_SECONDS = "SLIDESHOW_SECONDS_"
     // Home button for recents feature disabled
     // private val HOME_BUTTON_SHOW_RECENTS = "HOME_BUTTON_SHOW_RECENTS"
 
@@ -168,6 +169,13 @@ class Prefs(context: Context) {
 
     // Stored in drawing order as "appWidgetId:heightDp:widthDp:topDp:taps" entries
     // separated by ';', where taps is 1 (on), 2 (double tap) or 0 (off). Anything after taps is ignored.
+    // Seconds between photos for each slideshow widget, by its id
+    fun getSlideshowSeconds(id: Int): Int = prefs.getInt(SLIDESHOW_SECONDS + id, Constants.SLIDESHOW_DEFAULT_SECONDS)
+
+    fun setSlideshowSeconds(id: Int, seconds: Int) = prefs.edit { putInt(SLIDESHOW_SECONDS + id, seconds) }
+
+    fun removeSlideshowSeconds(id: Int) = prefs.edit { remove(SLIDESHOW_SECONDS + id) }
+
     var homeWidgets: List<HomeWidget>
         get() = prefs.getString(HOME_WIDGETS, "").orEmpty()
             .split(";")

@@ -33,7 +33,7 @@ class HomeWidgetHost(context: Context) : AppWidgetHost(context, Constants.HOME_W
  * widget's own buttons, so it can be edited. Keeping the finger down after the
  * long press drags the widget: [onDrag] gets the vertical distance moved.
  */
-class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
+open class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
 
     var onLongPress: (() -> Unit)? = null
     var onDrag: ((dy: Float) -> Unit)? = null
@@ -206,8 +206,13 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
     private val fadePaint = Paint(Paint.FILTER_BITMAP_FLAG)
 
     override fun updateAppWidget(remoteViews: RemoteViews?) {
+        changeWithCrossfade { super.updateAppWidget(remoteViews) }
+    }
+
+    /** Fades from what the widget shows now to what it shows after [change]. */
+    protected fun changeWithCrossfade(change: () -> Unit) {
         val snapshot = snapshotContent()
-        super.updateAppWidget(remoteViews)
+        change()
         if (snapshot != null) startCrossfade(snapshot)
     }
 
@@ -252,7 +257,7 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
     }
 
     /** Tells the widget how much space it has, so it can pick a fitting layout. */
-    fun updateSize(widthDp: Int, heightDp: Int) {
+    open fun updateSize(widthDp: Int, heightDp: Int) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
             updateAppWidgetSize(Bundle(), listOf(SizeF(widthDp.toFloat(), heightDp.toFloat())))
         else

@@ -51,6 +51,8 @@ import app.olauncher.helper.openDialerApp
 import app.olauncher.helper.setPlainWallpaperByTheme
 import app.olauncher.helper.WidgetResizeOverlay
 import app.olauncher.helper.showToast
+import app.olauncher.helper.Slideshows
+import app.olauncher.helper.SlideshowView
 import app.olauncher.listener.OnSwipeTouchListener
 import app.olauncher.listener.ViewSwipeTouchListener
 import java.text.SimpleDateFormat
@@ -69,6 +71,8 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private lateinit var appWidgetManager: AppWidgetManager
     private lateinit var homeGestureListener: OnSwipeTouchListener
     private var editingWidgetId: Int? = null
+    // Whether slideshow widgets should be changing photos: only while the home screen is showing
+    private var slideshowsRunning = false
 
     private val widgetViews = mutableListOf<WidgetViews>()
     // Resize overlay and edit bar of the widget being edited
@@ -121,12 +125,17 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     override fun onPause() {
         // Leaving the home screen ends widget editing; onResume rebuilds the widgets
         editingWidgetId = null
+        slideshowsRunning = false
+        slideshowViews().forEach { it.pause() }
         super.onPause()
     }
 
     override fun onResume() {
         super.onResume()
+        slideshowsRunning = true
         populateHomeScreen(false)
+        // Slideshows move on to their next photo after the home screen was away
+        slideshowViews().forEach { it.resume() }
         viewModel.isOlauncherDefault()
         if (prefs.showStatusBar) showStatusBar()
         else hideStatusBar()
@@ -228,6 +237,11 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
         viewModel.refreshHome.observe(viewLifecycleOwner) {
             populateHomeScreen(it)
+        }
+        viewModel.slideshowPhotosChanged.observe(viewLifecycleOwner) {
+            // Same widgets, new photos: rebuild so the slideshows load them
+            shownWidgets = null
+            populateWidgets()
         }
         viewModel.isOlauncherDefault.observe(viewLifecycleOwner, Observer {
             if (it != true) {
@@ -453,9 +467,31 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         }
         editingWidgetId?.let { showWidgetEditViews(it) }
         binding.widgetsLayout.isVisible = binding.widgetsLayout.childCount > 0
+        if (slideshowsRunning) slideshowViews().forEach { it.resume() }
+    }
+
+    private fun slideshowViews() = widgetViews.mapNotNull { it.hostView as? SlideshowView }
+
+    private fun deleteWidget(appWidgetId: Int) {
+        if (Slideshows.isSlideshow(appWidgetId)) {
+            Slideshows.delete(requireContext(), appWidgetId)
+            prefs.removeSlideshowSeconds(appWidgetId)
+        } else {
+            widgetHost.deleteAppWidgetId(appWidgetId)
+        }
+    }
+
+    private fun intervalLabel(seconds: Int): String = when {
+        seconds <= 0 -> getString(R.string.on_return)
+        seconds % 60 == 0 -> getString(R.string.minutes_short, seconds / 60)
+        else -> getString(R.string.seconds_short, seconds)
     }
 
     private fun createWidgetHostView(appWidgetId: Int): HomeWidgetHostView? {
+        if (Slideshows.isSlideshow(appWidgetId))
+            return SlideshowView(requireContext(), Slideshows.photos(requireContext(), appWidgetId)).apply {
+                intervalSeconds = prefs.getSlideshowSeconds(appWidgetId)
+            }
         // Skip widgets whose app is gone or unavailable; they can be cleared from settings
         val info = appWidgetManager.getAppWidgetInfo(appWidgetId) ?: return null
         return try {
@@ -614,8 +650,26 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         }
 
 
+        val slideshow = views.hostView as? SlideshowView
+        bar.slideshowIntervalRow.isVisible = slideshow != null
+        bar.slideshowPhotosRow.isVisible = slideshow != null
+        if (slideshow != null) {
+            bar.slideshowInterval.text = intervalLabel(slideshow.intervalSeconds)
+            bar.slideshowInterval.setOnClickListener {
+                val intervals = Constants.SLIDESHOW_INTERVALS
+                val next = intervals[(intervals.indexOf(slideshow.intervalSeconds) + 1) % intervals.size]
+                prefs.setSlideshowSeconds(views.appWidgetId, next)
+                slideshow.intervalSeconds = next
+                bar.slideshowInterval.text = intervalLabel(next)
+            }
+            bar.slideshowPhotos.setOnClickListener {
+                stopEditingWidget()
+                viewModel.pickSlideshowPhotos.value = views.appWidgetId
+            }
+        }
+
         bar.widgetRemove.setOnClickListener {
-            widgetHost.deleteAppWidgetId(views.appWidgetId)
+            deleteWidget(views.appWidgetId)
             editingWidgetId = null
             prefs.homeWidgets = prefs.homeWidgets.filter { it.appWidgetId != views.appWidgetId }
             populateWidgets()

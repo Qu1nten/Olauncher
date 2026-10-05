@@ -90,6 +90,13 @@ object Constants {
     const val WIDGET_FIRST_TOP_DP = 160
     const val WIDGET_CROSSFADE_MS = 700L
 
+    // Slideshow widget: seconds between photos, in the order the setting cycles through them;
+    // 0 changes the photo only when returning to the home screen
+    val SLIDESHOW_INTERVALS = listOf(5, 10, 30, 60, 0)
+    const val SLIDESHOW_DEFAULT_SECONDS = 5
+    const val SLIDESHOW_MAX_PHOTOS = 100
+    const val SLIDESHOW_HEIGHT_DP = 240
+
     const val HINT_RATE_US = 15
 
     const val LONG_PRESS_DELAY_MS = 500L
