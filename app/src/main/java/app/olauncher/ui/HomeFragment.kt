@@ -249,6 +249,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         }
         viewModel.slideshowPhotosChanged.observe(viewLifecycleOwner) {
             // Same widgets, new photos: rebuild so the slideshows load them
+            SlideshowView.forgetShown()
             shownWidgets = null
             populateWidgets()
         }
@@ -498,7 +499,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
     private fun createWidgetHostView(appWidgetId: Int): HomeWidgetHostView? {
         if (Slideshows.isSlideshow(appWidgetId))
-            return SlideshowView(requireContext(), Slideshows.photos(requireContext(), appWidgetId)).apply {
+            return SlideshowView(requireContext(), appWidgetId, Slideshows.photos(requireContext(), appWidgetId)).apply {
                 intervalSeconds = prefs.getSlideshowSeconds(appWidgetId)
             }
         // Skip widgets whose app is gone or unavailable; they can be cleared from settings

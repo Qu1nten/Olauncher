@@ -1,6 +1,7 @@
 package app.olauncher.helper
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Outline
 import android.os.Build
 import android.view.Gravity
@@ -18,9 +19,14 @@ import java.util.concurrent.Future
  * The launcher's own photo slideshow widget. It shares the touch handling of app widgets
  * (editing, dragging, the tap settings) and shows its photos in random order with a crossfade,
  * moving on every [intervalSeconds] while resumed and on tap. Each time the home screen is hidden
- * it switches photo unseen, so a new one is already showing on return.
+ * it switches photo unseen, so a new one is already showing on return. It remembers what it showed,
+ * so when the home screen is rebuilt (after the app drawer or settings) it picks up where it was.
  */
-class SlideshowView(context: Context, private val photos: List<File>) : HomeWidgetHostView(context) {
+class SlideshowView(
+    context: Context,
+    private val slideshowId: Int,
+    private val photos: List<File>,
+) : HomeWidgetHostView(context) {
 
     /** Seconds between photos while the home screen is showing; 0 changes it only on returning home. */
     var intervalSeconds = 0
@@ -58,8 +64,15 @@ class SlideshowView(context: Context, private val photos: List<File>) : HomeWidg
             }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
         } else {
             addView(image, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-            // Once laid out, so the first photo is loaded at the right size
-            post { showNext() }
+            val saved = shown[slideshowId]?.takeIf { it.order.toSet() == photos.toSet() }
+            if (saved != null) {
+                order = saved.order
+                position = saved.position
+                image.setImageBitmap(saved.bitmap)
+            } else {
+                // Once laid out, so the first photo is loaded at the right size
+                post { showNext() }
+            }
         }
     }
 
@@ -96,6 +109,8 @@ class SlideshowView(context: Context, private val photos: List<File>) : HomeWidg
             order = photos.shuffled().let { if (it.size > 1 && it.first() == last) it.drop(1) + it.first() else it }
             position = 0
         }
+        val shownOrder = order
+        val shownPosition = position
         val file = order[position]
         val targetWidth = width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
         val targetHeight = height.takeIf { it > 0 } ?: targetWidth
@@ -105,6 +120,7 @@ class SlideshowView(context: Context, private val photos: List<File>) : HomeWidg
             post {
                 if (crossfade) changeWithCrossfade { image.setImageBitmap(bitmap) }
                 else image.setImageBitmap(bitmap)
+                shown[slideshowId] = Shown(shownOrder, shownPosition, bitmap)
             }
         })
         scheduleNext()
@@ -116,8 +132,16 @@ class SlideshowView(context: Context, private val photos: List<File>) : HomeWidg
         super.onDetachedFromWindow()
     }
 
+    private class Shown(val order: List<File>, val position: Int, val bitmap: Bitmap)
+
     companion object {
         // Photos are decoded one at a time, off the main thread
         private val loader = Executors.newSingleThreadExecutor()
+
+        // What each slideshow last showed, by its id, kept while the launcher runs
+        private val shown = HashMap<Int, Shown>()
+
+        /** Starts slideshows afresh, e.g. after their photos were replaced. */
+        fun forgetShown() = shown.clear()
     }
 }
