@@ -166,8 +166,8 @@ class Prefs(context: Context) {
         get() = prefs.getInt(HOME_APPS_NUM, 4)
         set(value) = prefs.edit { putInt(HOME_APPS_NUM, value).apply() }
 
-    // Stored in drawing order as "appWidgetId:heightDp:widthDp:topDp:taps:reloadOnReturn" entries
-    // separated by ';', where taps is 1 (on), 2 (double tap) or 0 (off) and reloadOnReturn is 1 or 0
+    // Stored in drawing order as "appWidgetId:heightDp:widthDp:topDp:taps" entries
+    // separated by ';', where taps is 1 (on), 2 (double tap) or 0 (off). Anything after taps is ignored.
     var homeWidgets: List<HomeWidget>
         get() = prefs.getString(HOME_WIDGETS, "").orEmpty()
             .split(";")
@@ -187,11 +187,10 @@ class Prefs(context: Context) {
                     "2" -> WidgetTaps.DOUBLE_TAP
                     else -> WidgetTaps.ON
                 }
-                val reloadOnReturn = !legacy && parts.getOrNull(5) == "1"
-                HomeWidget(id, height, width, top, taps, reloadOnReturn)
+                HomeWidget(id, height, width, top, taps)
             }
         set(value) = prefs.edit {
-            putString(HOME_WIDGETS, value.joinToString(";") { "${it.appWidgetId}:${it.heightDp}:${it.widthDp}:${it.topDp}:${it.taps.storedValue()}:${if (it.reloadOnReturn) 1 else 0}" })
+            putString(HOME_WIDGETS, value.joinToString(";") { "${it.appWidgetId}:${it.heightDp}:${it.widthDp}:${it.topDp}:${it.taps.storedValue()}" })
         }
 
     var homeAlignment: Int

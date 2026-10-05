@@ -176,8 +176,6 @@
     <string name="done">Done</string>
     <string name="interactive">Interactive</string>
     <string name="double_tap">Double tap</string>
-    <string name="reload_on_return">Reload on return</string>
-    <string name="reload_needs_permission">To reload widgets, Olauncher needs to be always allowed to create them. Remove this widget and add it again, and tick \"Always allow\" when asked.</string>
     <string name="remove_widget">Remove</string>
     <string name="font">Font</string>
     <string name="system_font">System</string>

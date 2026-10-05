@@ -12,9 +12,6 @@ data class HomeWidget(
     // Distance from the top of the screen; negative until placed, then it's put below the other widgets
     val topDp: Int = -1,
     val taps: WidgetTaps = WidgetTaps.ON,
-    // Swapped for a fresh copy of itself each time the home screen appears, so apps that pick new
-    // content for a new widget (like Google Photos memories) show something different
-    val reloadOnReturn: Boolean = false,
 )
 
 /** How touches on a widget are handled. */

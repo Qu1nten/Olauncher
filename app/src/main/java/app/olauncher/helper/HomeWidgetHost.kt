@@ -205,17 +205,10 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
     private var fadeAnimator: ValueAnimator? = null
     private val fadePaint = Paint(Paint.FILTER_BITMAP_FLAG)
 
-    /** Called once, the first time the widget's app sends content to show. */
-    var onFirstContent: (() -> Unit)? = null
-
     override fun updateAppWidget(remoteViews: RemoteViews?) {
         val snapshot = snapshotContent()
         super.updateAppWidget(remoteViews)
         if (snapshot != null) startCrossfade(snapshot)
-        if (remoteViews != null) onFirstContent?.let {
-            onFirstContent = null
-            it()
-        }
     }
 
     private fun snapshotContent(): Bitmap? {

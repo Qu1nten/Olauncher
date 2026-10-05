@@ -9,8 +9,6 @@ import android.content.res.Configuration
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -45,7 +43,6 @@ import app.olauncher.helper.getColorFromAttr
 import app.olauncher.helper.getUserHandleFromString
 import app.olauncher.helper.HomeWidgetHost
 import app.olauncher.helper.HomeWidgetHostView
-import app.olauncher.helper.needsConfiguration
 import app.olauncher.helper.isPackageInstalled
 import app.olauncher.helper.openAlarmApp
 import app.olauncher.helper.openCalendar
@@ -73,10 +70,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private lateinit var homeGestureListener: OnSwipeTouchListener
     private var editingWidgetId: Int? = null
 
-    // Reload on return: the fresh copy being prepared for each widget, by the id of the one it replaces
-    private val pendingReloads = HashMap<Int, Int>()
-    private val reloadHandler = Handler(Looper.getMainLooper())
-    private var reloadPermissionToastShown = false
     private val widgetViews = mutableListOf<WidgetViews>()
     // Resize overlay and edit bar of the widget being edited
     private var editViews: List<View> = emptyList()
@@ -134,7 +127,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     override fun onResume() {
         super.onResume()
         populateHomeScreen(false)
-        reloadWidgets()
         viewModel.isOlauncherDefault()
         if (prefs.showStatusBar) showStatusBar()
         else hideStatusBar()
@@ -486,91 +478,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         hostView.onDragEnd = { dy -> dropWidget(appWidgetId, dy) }
     }
 
-    private fun reloadWidgets() {
-        if (editingWidgetId != null) return
-        val widgets = prefs.homeWidgets
-        for (views in widgetViews.toList()) {
-            val widget = widgets.find { it.appWidgetId == views.appWidgetId } ?: continue
-            if (widget.reloadOnReturn) reloadWidget(views, widget)
-        }
-    }
-
-    // Binds a new copy of the widget behind the current one and crossfades to it once its app has
-    // drawn it. Apps like Google Photos pick new content for a new widget; if the app never draws
-    // the copy, the current widget simply stays.
-    private fun reloadWidget(views: WidgetViews, widget: HomeWidget) {
-        if (views.appWidgetId in pendingReloads) {
-            reloadDiagnostic("still waiting for the previous copy")
-            return
-        }
-        val info = appWidgetManager.getAppWidgetInfo(views.appWidgetId) ?: return
-        val newId = widgetHost.allocateAppWidgetId()
-        val bound = try {
-            appWidgetManager.bindAppWidgetIdIfAllowed(newId, info.profile, info.provider, null)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            false
-        }
-        if (!bound) {
-            widgetHost.deleteAppWidgetId(newId)
-            reloadDiagnostic("not allowed to create a copy")
-            if (!reloadPermissionToastShown) {
-                reloadPermissionToastShown = true
-                requireContext().showToast(getString(R.string.reload_needs_permission), Toast.LENGTH_LONG)
-            }
-            return
-        }
-        // A widget with a setup screen gets no setup for the copy; if its app won't draw it unset,
-        // the copy times out and the current widget stays
-        val newHostView = createWidgetHostView(newId)
-        if (newHostView == null) {
-            widgetHost.deleteAppWidgetId(newId)
-            reloadDiagnostic("couldn't create the copy")
-            return
-        }
-        reloadDiagnostic(if (info.needsConfiguration()) "copy created (widget has a setup screen)" else "copy created")
-        setUpHostView(newHostView, newId, widget)
-        newHostView.alpha = 0f
-        views.frame.addView(newHostView, 0, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-        pendingReloads[views.appWidgetId] = newId
-
-        val giveUp = Runnable { finishReload(views, newHostView, newId, drawn = false) }
-        reloadHandler.postDelayed(giveUp, Constants.WIDGET_RELOAD_TIMEOUT_MS)
-        newHostView.onFirstContent = {
-            reloadHandler.removeCallbacks(giveUp)
-            finishReload(views, newHostView, newId, drawn = true)
-        }
-    }
-
-    // TEMPORARY: shows what each reload did while testing it with Google Photos
-    private fun reloadDiagnostic(message: String) {
-        if (_binding == null) return
-        Toast.makeText(requireContext(), "Widget reload: $message", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun finishReload(views: WidgetViews, newHostView: HomeWidgetHostView, newId: Int, drawn: Boolean) {
-        val oldId = views.appWidgetId
-        pendingReloads.remove(oldId)
-        // Keep the current widget if the copy never got drawn, or the widgets were rebuilt or are being edited
-        val stillShown = _binding != null && widgetViews.any { it === views }
-        if (!drawn || !stillShown || editingWidgetId == oldId) {
-            (newHostView.parent as? ViewGroup)?.removeView(newHostView)
-            widgetHost.deleteAppWidgetId(newId)
-            reloadDiagnostic(if (!drawn) "the app didn't draw the copy" else "skipped, widgets changed meanwhile")
-            return
-        }
-        reloadDiagnostic("swapped to the new copy")
-        prefs.homeWidgets = prefs.homeWidgets.map { if (it.appWidgetId == oldId) it.copy(appWidgetId = newId) else it }
-        shownWidgets = prefs.homeWidgets to editingWidgetId
-        widgetViews[widgetViews.indexOf(views)] = WidgetViews(newId, views.frame, newHostView)
-        // The old copy keeps showing its last content while it fades out
-        widgetHost.deleteAppWidgetId(oldId)
-        newHostView.animate().alpha(1f).setDuration(Constants.WIDGET_CROSSFADE_MS).start()
-        views.hostView.animate().alpha(0f).setDuration(Constants.WIDGET_CROSSFADE_MS)
-            .withEndAction { (views.hostView.parent as? ViewGroup)?.removeView(views.hostView) }
-            .start()
-    }
-
     // Gives widgets that have no position yet one below the lowest widget, and saves it
     private fun placeNewWidgets(widgets: List<HomeWidget>): List<HomeWidget> {
         if (widgets.none { it.topDp < 0 }) return widgets
@@ -706,12 +613,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             bar.widgetInteractive.text = getString(taps.label)
         }
 
-        bar.widgetReload.text = getString(if (widget.reloadOnReturn) R.string.on else R.string.off)
-        bar.widgetReload.setOnClickListener {
-            val reload = prefs.homeWidgets.find { it.appWidgetId == views.appWidgetId }?.reloadOnReturn != true
-            updateWidget(views.appWidgetId) { it.copy(reloadOnReturn = reload) }
-            bar.widgetReload.text = getString(if (reload) R.string.on else R.string.off)
-        }
 
         bar.widgetRemove.setOnClickListener {
             widgetHost.deleteAppWidgetId(views.appWidgetId)
@@ -1099,10 +1000,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         super.onDestroyView()
         shownWidgets = null
         editingWidgetId = null
-        // Copies still waiting to be drawn will never be shown now
-        reloadHandler.removeCallbacksAndMessages(null)
-        pendingReloads.values.forEach { widgetHost.deleteAppWidgetId(it) }
-        pendingReloads.clear()
         widgetViews.clear()
         editViews = emptyList()
         _binding = null
