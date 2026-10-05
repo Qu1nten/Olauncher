@@ -9,6 +9,9 @@ import android.content.res.Configuration
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
@@ -30,6 +33,7 @@ import app.olauncher.R
 import app.olauncher.data.AppModel
 import app.olauncher.data.Constants
 import app.olauncher.data.HomeWidget
+import app.olauncher.data.WIDGET_REFRESH_SECONDS
 import app.olauncher.data.label
 import app.olauncher.data.next
 import app.olauncher.data.Prefs
@@ -69,6 +73,16 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private lateinit var appWidgetManager: AppWidgetManager
     private lateinit var homeGestureListener: OnSwipeTouchListener
     private var editingWidgetId: Int? = null
+
+    // Auto refresh runs only while the home screen is showing, checking once a second what's due
+    private val widgetRefreshHandler = Handler(Looper.getMainLooper())
+    private val lastWidgetRefresh = HashMap<Int, Long>()
+    private val widgetRefreshTick = object : Runnable {
+        override fun run() {
+            refreshDueWidgets()
+            widgetRefreshHandler.postDelayed(this, 1000)
+        }
+    }
     private val widgetViews = mutableListOf<WidgetViews>()
     // Resize overlay and edit bar of the widget being edited
     private var editViews: List<View> = emptyList()
@@ -120,12 +134,15 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     override fun onPause() {
         // Leaving the home screen ends widget editing; onResume rebuilds the widgets
         editingWidgetId = null
+        widgetRefreshHandler.removeCallbacks(widgetRefreshTick)
         super.onPause()
     }
 
     override fun onResume() {
         super.onResume()
         populateHomeScreen(false)
+        widgetRefreshHandler.removeCallbacks(widgetRefreshTick)
+        widgetRefreshHandler.post(widgetRefreshTick)
         viewModel.isOlauncherDefault()
         if (prefs.showStatusBar) showStatusBar()
         else hideStatusBar()
@@ -507,6 +524,26 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         shownWidgets = prefs.homeWidgets to editingWidgetId
     }
 
+    private fun refreshDueWidgets() {
+        if (_binding == null) return
+        val now = SystemClock.elapsedRealtime()
+        for (widget in shownWidgets?.first.orEmpty()) {
+            if (widget.refreshSeconds <= 0) continue
+            val last = lastWidgetRefresh[widget.appWidgetId]
+            if (last != null && now - last < widget.refreshSeconds * 1000L) continue
+            lastWidgetRefresh[widget.appWidgetId] = now
+            // The first tick only starts the clock, so returning home doesn't refresh right away
+            if (last == null) continue
+            widgetViews.find { it.appWidgetId == widget.appWidgetId }?.hostView?.requestUpdate()
+        }
+    }
+
+    private fun refreshLabel(seconds: Int): String = when {
+        seconds <= 0 -> getString(R.string.off)
+        seconds % 60 == 0 -> getString(R.string.refresh_minutes, seconds / 60)
+        else -> getString(R.string.refresh_seconds, seconds)
+    }
+
     private fun startEditingWidget(appWidgetId: Int) {
         if (editingWidgetId == appWidgetId) return
         editingWidgetId = appWidgetId
@@ -606,6 +643,15 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             views.hostView.taps = taps
             updateWidget(views.appWidgetId) { it.copy(taps = taps) }
             bar.widgetInteractive.text = getString(taps.label)
+        }
+
+        bar.widgetRefresh.text = refreshLabel(widget.refreshSeconds)
+        bar.widgetRefresh.setOnClickListener {
+            val current = prefs.homeWidgets.find { it.appWidgetId == views.appWidgetId }?.refreshSeconds ?: 0
+            val next = WIDGET_REFRESH_SECONDS[(WIDGET_REFRESH_SECONDS.indexOf(current) + 1) % WIDGET_REFRESH_SECONDS.size]
+            updateWidget(views.appWidgetId) { it.copy(refreshSeconds = next) }
+            lastWidgetRefresh.remove(views.appWidgetId)
+            bar.widgetRefresh.text = refreshLabel(next)
         }
 
         bar.widgetRemove.setOnClickListener {

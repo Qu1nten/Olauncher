@@ -176,6 +176,9 @@
     <string name="done">Done</string>
     <string name="interactive">Interactive</string>
     <string name="double_tap">Double tap</string>
+    <string name="auto_refresh">Auto refresh</string>
+    <string name="refresh_seconds">%1$d s</string>
+    <string name="refresh_minutes">%1$d min</string>
     <string name="remove_widget">Remove</string>
     <string name="font">Font</string>
     <string name="system_font">System</string>

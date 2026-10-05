@@ -2,8 +2,14 @@ package app.olauncher.helper
 
 import android.appwidget.AppWidgetHost
 import android.appwidget.AppWidgetHostView
+import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProviderInfo
+import android.animation.ValueAnimator
 import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
@@ -11,10 +17,14 @@ import android.util.SizeF
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.ViewConfiguration
+import android.widget.RemoteViews
+import androidx.core.animation.doOnEnd
 import app.olauncher.data.Constants
 import app.olauncher.data.WidgetTaps
 import kotlin.math.abs
 import kotlin.math.roundToInt
+
+private const val CROSSFADE_MS = 700L
 
 class HomeWidgetHost(context: Context) : AppWidgetHost(context, Constants.HOME_WIDGET_HOST_ID) {
 
@@ -190,7 +200,76 @@ class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
 
     override fun onDetachedFromWindow() {
         removeCallbacks(longPressRunnable)
+        endCrossfade()
         super.onDetachedFromWindow()
+    }
+
+    // Crossfade: a snapshot of what the widget showed before its last update, faded out on top
+    private var fadeSnapshot: Bitmap? = null
+    private var fadeAnimator: ValueAnimator? = null
+    private val fadePaint = Paint(Paint.FILTER_BITMAP_FLAG)
+
+    override fun updateAppWidget(remoteViews: RemoteViews?) {
+        val snapshot = snapshotContent()
+        super.updateAppWidget(remoteViews)
+        if (snapshot != null) startCrossfade(snapshot)
+    }
+
+    private fun snapshotContent(): Bitmap? {
+        // Nothing to fade from on the first update, or while the widget isn't on screen
+        if (!isAttachedToWindow || width == 0 || height == 0 || childCount == 0) return null
+        return try {
+            Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888).also { draw(Canvas(it)) }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    private fun startCrossfade(snapshot: Bitmap) {
+        endCrossfade()
+        fadeSnapshot = snapshot
+        fadeAnimator = ValueAnimator.ofInt(255, 0).apply {
+            duration = CROSSFADE_MS
+            addUpdateListener {
+                fadePaint.alpha = it.animatedValue as Int
+                invalidate()
+            }
+            doOnEnd { endCrossfade() }
+            start()
+        }
+    }
+
+    private fun endCrossfade() {
+        fadeAnimator?.let {
+            fadeAnimator = null
+            it.cancel()
+        }
+        fadeSnapshot?.recycle()
+        fadeSnapshot = null
+        invalidate()
+    }
+
+    override fun dispatchDraw(canvas: Canvas) {
+        super.dispatchDraw(canvas)
+        fadeSnapshot?.let { canvas.drawBitmap(it, 0f, 0f, fadePaint) }
+    }
+
+    /**
+     * Asks the widget's app to update it now, the same request Android sends on the widget's own
+     * update schedule. The app decides whether that shows anything new.
+     */
+    fun requestUpdate() {
+        val info = appWidgetInfo ?: return
+        try {
+            context.sendBroadcast(
+                Intent(AppWidgetManager.ACTION_APPWIDGET_UPDATE)
+                    .setComponent(info.provider)
+                    .putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(appWidgetId))
+            )
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     /** Tells the widget how much space it has, so it can pick a fitting layout. */
