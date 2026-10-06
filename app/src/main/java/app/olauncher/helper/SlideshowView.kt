@@ -26,8 +26,10 @@ import java.util.concurrent.Future
 class SlideshowView(
     context: Context,
     private val slideshowId: Int,
-    private val photos: List<File>,
+    initialPhotos: List<File>,
 ) : HomeWidgetHostView(context) {
+
+    private val photos = initialPhotos.toMutableList()
 
     /** Seconds between photos while the home screen is showing; 0 changes it only on returning home. */
     var intervalSeconds = 0
@@ -63,10 +65,7 @@ class SlideshowView(
         clipToOutline = true
 
         if (photos.isEmpty()) {
-            addView(TextView(context).apply {
-                setText(R.string.slideshow_empty)
-                gravity = Gravity.CENTER
-            }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+            showEmpty()
         } else {
             addView(image, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
             val saved = shown[slideshowId]?.takeIf { it.order.toSet() == photos.toSet() }
@@ -79,6 +78,29 @@ class SlideshowView(
                 // Once laid out, so the first photo is loaded at the right size
                 post { showNext() }
             }
+        }
+    }
+
+    private fun showEmpty() {
+        removeAllViews()
+        addView(TextView(context).apply {
+            setText(R.string.slideshow_empty)
+            gravity = Gravity.CENTER
+        }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
+    }
+
+    /** Drops a photo that was deleted, moving on to the next one if it was showing. */
+    fun removePhoto(photo: File) {
+        photos.remove(photo)
+        val index = order.indexOf(photo)
+        if (index >= 0) {
+            order = order - photo
+            if (index <= position) position--
+        }
+        shown.remove(slideshowId)
+        when {
+            photos.isEmpty() -> showEmpty()
+            photo == currentPhoto -> showNext()
         }
     }
 

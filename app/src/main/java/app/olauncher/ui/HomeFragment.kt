@@ -7,7 +7,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
 import android.content.res.Configuration
-import android.graphics.Color
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
@@ -17,7 +16,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.RequiresApi
@@ -29,6 +27,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import app.olauncher.MainViewModel
 import app.olauncher.R
@@ -38,12 +37,14 @@ import app.olauncher.data.HomeWidget
 import app.olauncher.data.label
 import app.olauncher.data.next
 import app.olauncher.data.Prefs
+import app.olauncher.databinding.DialogPhotoViewerBinding
 import app.olauncher.databinding.FragmentHomeBinding
 import app.olauncher.databinding.LayoutWidgetEditBarBinding
 import app.olauncher.helper.appUsagePermissionGranted
 import app.olauncher.helper.dpToPx
 import app.olauncher.helper.expandNotificationDrawer
 import app.olauncher.helper.getChangedAppTheme
+import app.olauncher.helper.createDialog
 import app.olauncher.helper.getColorFromAttr
 import app.olauncher.helper.getUserHandleFromString
 import app.olauncher.helper.HomeWidgetHost
@@ -64,6 +65,9 @@ import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 private class WidgetViews(val appWidgetId: Int, val frame: FrameLayout, val hostView: HomeWidgetHostView)
@@ -495,19 +499,60 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         }
     }
 
-    // Opens the original a slideshow photo was copied from: in Google Drive when it came from there,
-    // otherwise in whichever app opens photos. Without a reachable original, shows the copy full screen.
-    private fun openSlideshowPhoto(slideshowId: Int, photo: File) {
+    // A tap on a slideshow shows its photo full screen, where it can be deleted or opened
+    private fun showSlideshowPhoto(slideshow: SlideshowView, slideshowId: Int, photo: File) {
+        val metrics = resources.displayMetrics
+        val bitmap = Slideshows.loadPhoto(photo, metrics.widthPixels, metrics.heightPixels) ?: return
         val source = Slideshows.source(requireContext(), slideshowId, photo)
-        if (source != null) {
+        val dialog = Dialog(requireContext(), android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        val viewer = DialogPhotoViewerBinding.inflate(layoutInflater)
+        viewer.photo.setImageBitmap(bitmap)
+        viewer.photo.setOnClickListener { dialog.dismiss() }
+        viewer.close.setOnClickListener { dialog.dismiss() }
+        viewer.open.isVisible = source != null
+        viewer.open.setOnClickListener {
+            // The original, in whichever app opens photos
             val view = Intent(Intent.ACTION_VIEW)
                 .setDataAndType(source, "image/*")
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            val fromDrive = source.authority?.startsWith(Constants.GOOGLE_DRIVE_PACKAGE) == true
-            if (fromDrive && tryStartActivity(Intent(view).setPackage(Constants.GOOGLE_DRIVE_PACKAGE))) return
-            if (tryStartActivity(view)) return
+            if (tryStartActivity(view)) dialog.dismiss()
         }
-        showPhotoFullscreen(photo)
+        viewer.delete.setOnClickListener { confirmDeletePhoto(dialog, slideshow, slideshowId, photo) }
+        dialog.setContentView(viewer.root)
+        dialog.show()
+    }
+
+    private fun confirmDeletePhoto(viewer: Dialog, slideshow: SlideshowView, slideshowId: Int, photo: File) {
+        val context = requireContext()
+        context.createDialog(
+            title = R.string.delete_photo,
+            message = R.string.delete_photo_message,
+            neutral = R.string.only_from_slideshow,
+            onNeutral = {
+                removeSlideshowPhoto(slideshow, slideshowId, photo)
+                viewer.dismiss()
+                context.showToast(context.getString(R.string.photo_removed))
+            },
+            action = R.string.delete_photo_action,
+            onAction = {
+                lifecycleScope.launch {
+                    // Deleting from Google Drive goes through the Drive app, so not on the main thread
+                    val deleted = withContext(Dispatchers.IO) { Slideshows.deleteSource(context, slideshowId, photo) }
+                    if (deleted) {
+                        removeSlideshowPhoto(slideshow, slideshowId, photo)
+                        viewer.dismiss()
+                        context.showToast(context.getString(R.string.photo_deleted))
+                    } else {
+                        context.showToast(context.getString(R.string.photo_delete_failed), Toast.LENGTH_LONG)
+                    }
+                }
+            },
+        ).showRespectingStatusBar()
+    }
+
+    private fun removeSlideshowPhoto(slideshow: SlideshowView, slideshowId: Int, photo: File) {
+        Slideshows.removePhoto(slideshow.context, slideshowId, photo)
+        slideshow.removePhoto(photo)
     }
 
     private fun tryStartActivity(intent: Intent): Boolean = try {
@@ -517,19 +562,6 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         // No app for it, or access to the original was lost
         e.printStackTrace()
         false
-    }
-
-    private fun showPhotoFullscreen(photo: File) {
-        val metrics = resources.displayMetrics
-        val bitmap = Slideshows.loadPhoto(photo, metrics.widthPixels, metrics.heightPixels) ?: return
-        val dialog = Dialog(requireContext(), android.R.style.Theme_Black_NoTitleBar_Fullscreen)
-        dialog.setContentView(ImageView(requireContext()).apply {
-            setImageBitmap(bitmap)
-            scaleType = ImageView.ScaleType.FIT_CENTER
-            setBackgroundColor(Color.BLACK)
-            setOnClickListener { dialog.dismiss() }
-        })
-        dialog.show()
     }
 
     private fun intervalLabel(seconds: Int): String = when {
@@ -542,7 +574,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         if (Slideshows.isSlideshow(appWidgetId))
             return SlideshowView(requireContext(), appWidgetId, Slideshows.photos(requireContext(), appWidgetId)).apply {
                 intervalSeconds = prefs.getSlideshowSeconds(appWidgetId)
-                onOpenPhoto = { photo -> openSlideshowPhoto(appWidgetId, photo) }
+                onOpenPhoto = { photo -> showSlideshowPhoto(this, appWidgetId, photo) }
             }
         // Skip widgets whose app is gone or unavailable; they can be cleared from settings
         val info = appWidgetManager.getAppWidgetInfo(appWidgetId) ?: return null

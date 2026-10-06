@@ -96,7 +96,6 @@ object Constants {
     const val SLIDESHOW_DEFAULT_SECONDS = 5
     const val SLIDESHOW_MAX_PHOTOS = 500
     const val SLIDESHOW_HEIGHT_DP = 240
-    const val GOOGLE_DRIVE_PACKAGE = "com.google.android.apps.docs"
 
     const val HINT_RATE_US = 15
 

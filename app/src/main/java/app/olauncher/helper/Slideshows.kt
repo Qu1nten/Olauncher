@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
 import android.net.Uri
+import android.provider.DocumentsContract
 import app.olauncher.data.HomeWidget
 import java.io.File
 import java.io.InputStream
@@ -77,27 +78,67 @@ object Slideshows {
         return readSources(context, id).getOrNull(index)
     }
 
-    private fun readSources(context: Context, id: Int): List<Uri> =
-        runCatching { File(dir(context, id), SOURCES_FILE).readLines().map { Uri.parse(it) } }.getOrDefault(emptyList())
-
-    // Keeps the right to open the original after the picker's one-time access ends. Not every
-    // source allows it, and Android caps how many are kept; those photos fall back to the copy.
-    private fun keepAccess(context: Context, uri: Uri) {
-        try {
-            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    /**
+     * Deletes the original a photo was copied from, such as the file in its Google Drive folder.
+     * Returns false when there's no original, or its app doesn't allow deleting it from here.
+     */
+    fun deleteSource(context: Context, id: Int, photo: File): Boolean {
+        val uri = source(context, id, photo) ?: return false
+        return try {
+            DocumentsContract.deleteDocument(context.contentResolver, uri)
         } catch (e: Exception) {
             e.printStackTrace()
+            false
         }
     }
 
-    private fun releaseSources(context: Context, id: Int) {
-        for (uri in readSources(context, id)) {
+    /** Removes one photo from the slideshow; its original is left alone. */
+    fun removePhoto(context: Context, id: Int, photo: File) {
+        val index = photo.nameWithoutExtension.toIntOrNull()
+        val sources = readSources(context, id).toMutableList()
+        if (index != null && index in sources.indices) {
+            sources[index]?.let { releaseAccess(context, it) }
+            // Blanked rather than removed, so the other photos keep their line
+            sources[index] = null
+            File(dir(context, id), SOURCES_FILE).writeText(sources.joinToString("\n") { it?.toString().orEmpty() })
+        }
+        photo.delete()
+    }
+
+    private fun readSources(context: Context, id: Int): List<Uri?> =
+        runCatching {
+            File(dir(context, id), SOURCES_FILE).readLines().map { line -> line.takeIf { it.isNotBlank() }?.let(Uri::parse) }
+        }.getOrDefault(emptyList())
+
+    // Keeps the right to open (and, where allowed, delete) the original after the picker's one-time
+    // access ends. Not every source allows it, and Android caps how many are kept; those photos
+    // fall back to the copy.
+    private fun keepAccess(context: Context, uri: Uri) {
+        val readWrite = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        for (flags in listOf(readWrite, Intent.FLAG_GRANT_READ_URI_PERMISSION)) {
             try {
-                context.contentResolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                context.contentResolver.takePersistableUriPermission(uri, flags)
+                return
             } catch (e: Exception) {
                 e.printStackTrace()
             }
         }
+    }
+
+    private fun releaseAccess(context: Context, uri: Uri) {
+        val readWrite = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        for (flags in listOf(readWrite, Intent.FLAG_GRANT_READ_URI_PERMISSION)) {
+            try {
+                context.contentResolver.releasePersistableUriPermission(uri, flags)
+                return
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private fun releaseSources(context: Context, id: Int) {
+        readSources(context, id).filterNotNull().forEach { releaseAccess(context, it) }
     }
 
     fun delete(context: Context, id: Int) {
