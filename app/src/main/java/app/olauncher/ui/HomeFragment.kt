@@ -1,11 +1,13 @@
 package app.olauncher.ui
 
+import android.app.Dialog
 import android.app.admin.DevicePolicyManager
 import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
 import android.content.res.Configuration
+import android.graphics.Color
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
@@ -15,6 +17,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.annotation.RequiresApi
@@ -57,6 +60,7 @@ import app.olauncher.helper.Slideshows
 import app.olauncher.helper.SlideshowView
 import app.olauncher.listener.OnSwipeTouchListener
 import app.olauncher.listener.ViewSwipeTouchListener
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -491,6 +495,43 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         }
     }
 
+    // Opens the original a slideshow photo was copied from: in Google Drive when it came from there,
+    // otherwise in whichever app opens photos. Without a reachable original, shows the copy full screen.
+    private fun openSlideshowPhoto(slideshowId: Int, photo: File) {
+        val source = Slideshows.source(requireContext(), slideshowId, photo)
+        if (source != null) {
+            val view = Intent(Intent.ACTION_VIEW)
+                .setDataAndType(source, "image/*")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val fromDrive = source.authority?.startsWith(Constants.GOOGLE_DRIVE_PACKAGE) == true
+            if (fromDrive && tryStartActivity(Intent(view).setPackage(Constants.GOOGLE_DRIVE_PACKAGE))) return
+            if (tryStartActivity(view)) return
+        }
+        showPhotoFullscreen(photo)
+    }
+
+    private fun tryStartActivity(intent: Intent): Boolean = try {
+        startActivity(intent)
+        true
+    } catch (e: Exception) {
+        // No app for it, or access to the original was lost
+        e.printStackTrace()
+        false
+    }
+
+    private fun showPhotoFullscreen(photo: File) {
+        val metrics = resources.displayMetrics
+        val bitmap = Slideshows.loadPhoto(photo, metrics.widthPixels, metrics.heightPixels) ?: return
+        val dialog = Dialog(requireContext(), android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        dialog.setContentView(ImageView(requireContext()).apply {
+            setImageBitmap(bitmap)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setBackgroundColor(Color.BLACK)
+            setOnClickListener { dialog.dismiss() }
+        })
+        dialog.show()
+    }
+
     private fun intervalLabel(seconds: Int): String = when {
         seconds <= 0 -> getString(R.string.on_return)
         seconds % 60 == 0 -> getString(R.string.minutes_short, seconds / 60)
@@ -501,6 +542,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         if (Slideshows.isSlideshow(appWidgetId))
             return SlideshowView(requireContext(), appWidgetId, Slideshows.photos(requireContext(), appWidgetId)).apply {
                 intervalSeconds = prefs.getSlideshowSeconds(appWidgetId)
+                onOpenPhoto = { photo -> openSlideshowPhoto(appWidgetId, photo) }
             }
         // Skip widgets whose app is gone or unavailable; they can be cleared from settings
         val info = appWidgetManager.getAppWidgetInfo(appWidgetId) ?: return null

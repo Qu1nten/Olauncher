@@ -18,7 +18,8 @@ import java.util.concurrent.Future
 /**
  * The launcher's own photo slideshow widget. It shares the touch handling of app widgets
  * (editing, dragging, the tap settings) and shows its photos in random order with a crossfade,
- * moving on every [intervalSeconds] while resumed and on tap. Each time the home screen is hidden
+ * moving on every [intervalSeconds] while resumed. A tap (or double tap, per its tap setting) opens
+ * the photo showing, through [onOpenPhoto]. Each time the home screen is hidden
  * it switches photo unseen, so a new one is already showing on return. It remembers what it showed,
  * so when the home screen is rebuilt (after the app drawer or settings) it picks up where it was.
  */
@@ -35,10 +36,14 @@ class SlideshowView(
             scheduleNext()
         }
 
+    /** Called with the stored copy of the photo showing when it's tapped. */
+    var onOpenPhoto: ((File) -> Unit)? = null
+
     private val image = ImageView(context).apply {
         scaleType = ImageView.ScaleType.CENTER_CROP
-        setOnClickListener { showNext() }
+        setOnClickListener { currentPhoto?.let { onOpenPhoto?.invoke(it) } }
     }
+    private var currentPhoto: File? = null
     private var order = photos.shuffled()
     private var position = -1
     private var running = false
@@ -68,6 +73,7 @@ class SlideshowView(
             if (saved != null) {
                 order = saved.order
                 position = saved.position
+                currentPhoto = saved.order.getOrNull(saved.position)
                 image.setImageBitmap(saved.bitmap)
             } else {
                 // Once laid out, so the first photo is loaded at the right size
@@ -120,6 +126,7 @@ class SlideshowView(
             post {
                 if (crossfade) changeWithCrossfade { image.setImageBitmap(bitmap) }
                 else image.setImageBitmap(bitmap)
+                currentPhoto = file
                 shown[slideshowId] = Shown(shownOrder, shownPosition, bitmap)
             }
         })

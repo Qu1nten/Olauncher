@@ -1,6 +1,7 @@
 package app.olauncher.helper
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
@@ -19,6 +20,8 @@ object Slideshows {
     private const val DIR = "slideshows"
     private const val MAX_SIDE_PX = 1600
     private const val JPEG_QUALITY = 85
+    // Where each photo came from, one line per stored photo in the same order
+    private const val SOURCES_FILE = "sources.txt"
 
     /** Slideshows use negative ids, so they never clash with Android's app widget ids. */
     fun isSlideshow(id: Int) = id < 0
@@ -39,37 +42,73 @@ object Slideshows {
         val temp = File(context.filesDir, "$DIR/${-id}.new")
         temp.deleteRecursively()
         temp.mkdirs()
-        var count = 0
+        val sources = mutableListOf<Uri>()
         for (uri in uris) {
             val bitmap = decodeResized(context, uri) ?: continue
             try {
-                File(temp, "%03d.jpg".format(count)).outputStream().use {
+                File(temp, "%03d.jpg".format(sources.size)).outputStream().use {
                     bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it)
                 }
-                count++
+                sources += uri
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
                 bitmap.recycle()
             }
         }
-        if (count == 0) {
+        if (sources.isEmpty()) {
             temp.deleteRecursively()
             return 0
         }
+        File(temp, SOURCES_FILE).writeText(sources.joinToString("\n"))
+        releaseSources(context, id)
+        sources.forEach { keepAccess(context, it) }
         target.deleteRecursively()
         if (!temp.renameTo(target)) {
             temp.deleteRecursively()
             return 0
         }
-        return count
+        return sources.size
+    }
+
+    /** The original a stored photo was copied from, if it was recorded. */
+    fun source(context: Context, id: Int, photo: File): Uri? {
+        val index = photo.nameWithoutExtension.toIntOrNull() ?: return null
+        return readSources(context, id).getOrNull(index)
+    }
+
+    private fun readSources(context: Context, id: Int): List<Uri> =
+        runCatching { File(dir(context, id), SOURCES_FILE).readLines().map { Uri.parse(it) } }.getOrDefault(emptyList())
+
+    // Keeps the right to open the original after the picker's one-time access ends. Not every
+    // source allows it, and Android caps how many are kept; those photos fall back to the copy.
+    private fun keepAccess(context: Context, uri: Uri) {
+        try {
+            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    private fun releaseSources(context: Context, id: Int) {
+        for (uri in readSources(context, id)) {
+            try {
+                context.contentResolver.releasePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
     }
 
     fun delete(context: Context, id: Int) {
+        releaseSources(context, id)
         dir(context, id).deleteRecursively()
     }
 
     fun deleteAll(context: Context) {
+        File(context.filesDir, DIR).listFiles()?.forEach { folder ->
+            folder.name.toIntOrNull()?.let { releaseSources(context, -it) }
+        }
         File(context.filesDir, DIR).deleteRecursively()
     }
 
