@@ -94,7 +94,7 @@ object Constants {
     // 0 changes the photo only when returning to the home screen
     val SLIDESHOW_INTERVALS = listOf(5, 10, 30, 60, 0)
     const val SLIDESHOW_DEFAULT_SECONDS = 5
-    const val SLIDESHOW_MAX_PHOTOS = 500
+    const val SLIDESHOW_MAX_PHOTOS = 2000
     const val SLIDESHOW_HEIGHT_DP = 240
 
     const val HINT_RATE_US = 15

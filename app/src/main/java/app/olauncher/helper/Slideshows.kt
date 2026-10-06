@@ -9,8 +9,18 @@ import android.media.ExifInterface
 import android.net.Uri
 import android.provider.DocumentsContract
 import app.olauncher.data.HomeWidget
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Photos for the launcher's own slideshow widgets. Picked photos are stored as resized copies in
@@ -21,6 +31,7 @@ object Slideshows {
     private const val DIR = "slideshows"
     private const val MAX_SIDE_PX = 1600
     private const val JPEG_QUALITY = 85
+    private const val PARALLEL_DOWNLOADS = 4
     // Where each photo came from, one line per stored photo in the same order
     private const val SOURCES_FILE = "sources.txt"
 
@@ -36,40 +47,62 @@ object Slideshows {
 
     /**
      * Replaces the slideshow's photos with resized copies of these and returns how many could be
-     * read; when none could, the current photos are kept. Slow, so call it off the main thread.
+     * read; when none could, the current photos are kept. Downloads run a few at a time, since photos
+     * from Google Drive are slow to fetch; decoding runs one at a time to keep memory use down.
      */
-    fun setPhotos(context: Context, id: Int, uris: List<Uri>): Int {
+    suspend fun importPhotos(
+        context: Context,
+        id: Int,
+        uris: List<Uri>,
+        onProgress: suspend (done: Int, total: Int) -> Unit,
+    ): Int = withContext(Dispatchers.IO) {
+        // Lasting access first: the job can outlive the picker's one-time access
+        releaseSources(context, id)
+        uris.forEach { keepAccess(context, it) }
+
         val target = dir(context, id)
         val temp = File(context.filesDir, "$DIR/${-id}.new")
         temp.deleteRecursively()
         temp.mkdirs()
-        val sources = mutableListOf<Uri>()
-        for (uri in uris) {
-            val bitmap = decodeResized(context, uri) ?: continue
-            try {
-                File(temp, "%03d.jpg".format(sources.size)).outputStream().use {
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it)
+        val downloads = Semaphore(PARALLEL_DOWNLOADS)
+        val decoding = Mutex()
+        val done = AtomicInteger()
+        val copied = coroutineScope {
+            uris.mapIndexed { index, uri ->
+                async {
+                    val ok = downloads.withPermit {
+                        val download = download(context, uri) ?: return@withPermit false
+                        try {
+                            decoding.withLock { saveResized(download, File(temp, "$index.part")) }
+                        } finally {
+                            download.delete()
+                        }
+                    }
+                    onProgress(done.incrementAndGet(), uris.size)
+                    ok
                 }
-                sources += uri
-            } catch (e: Exception) {
-                e.printStackTrace()
-            } finally {
-                bitmap.recycle()
-            }
+            }.awaitAll()
+        }
+
+        // Number the copies in pick order, skipping photos that couldn't be read
+        val sources = mutableListOf<Uri>()
+        copied.forEachIndexed { index, ok ->
+            if (ok && File(temp, "$index.part").renameTo(File(temp, "%04d.jpg".format(sources.size))))
+                sources += uris[index]
         }
         if (sources.isEmpty()) {
             temp.deleteRecursively()
-            return 0
+            return@withContext 0
         }
         File(temp, SOURCES_FILE).writeText(sources.joinToString("\n"))
-        releaseSources(context, id)
-        sources.forEach { keepAccess(context, it) }
+        val kept = sources.toSet()
+        uris.filter { it !in kept }.forEach { releaseAccess(context, it) }
         target.deleteRecursively()
         if (!temp.renameTo(target)) {
             temp.deleteRecursively()
-            return 0
+            return@withContext 0
         }
-        return sources.size
+        sources.size
     }
 
     /** The original a stored photo was copied from, if it was recorded. */
@@ -163,29 +196,48 @@ object Slideshows {
         BitmapFactory.decodeFile(file.path, options)
     }.getOrNull()
 
-    // Decodes a picked photo upright and no larger than MAX_SIDE_PX on its longest side. It's copied
-    // to a temporary file first, so a photo from Google Drive or another cloud folder downloads once.
-    private fun decodeResized(context: Context, uri: Uri): Bitmap? {
+    // Copies a picked photo to a temporary file, so a photo from Google Drive or another cloud
+    // folder downloads once and is then read locally
+    private fun download(context: Context, uri: Uri): File? {
         val temp = runCatching { File.createTempFile("slideshow", null, context.cacheDir) }.getOrNull() ?: return null
         return try {
             val copied = context.contentResolver.openInputStream(uri)?.use { input ->
                 temp.outputStream().use { input.copyTo(it) }
             }
-            if (copied == null) return null
+            if (copied == null) {
+                temp.delete()
+                null
+            } else temp
+        } catch (e: Exception) {
+            e.printStackTrace()
+            temp.delete()
+            null
+        }
+    }
+
+    // Saves a photo upright and no larger than MAX_SIDE_PX on its longest side, as a JPEG
+    private fun saveResized(photo: File, target: File): Boolean {
+        val bitmap = try {
             val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeFile(temp.path, bounds)
-            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+            BitmapFactory.decodeFile(photo.path, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return false
             val options = BitmapFactory.Options().apply {
                 inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight, MAX_SIDE_PX)
             }
-            val sampled = BitmapFactory.decodeFile(temp.path, options) ?: return null
-            val rotation = temp.inputStream().use { exifRotation(it) }
+            val sampled = BitmapFactory.decodeFile(photo.path, options) ?: return false
+            val rotation = photo.inputStream().use { exifRotation(it) }
             scaleAndRotate(sampled, rotation)
         } catch (e: Exception) {
             e.printStackTrace()
-            null
+            return false
+        }
+        return try {
+            target.outputStream().use { bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, it) }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
         } finally {
-            temp.delete()
+            bitmap.recycle()
         }
     }
 

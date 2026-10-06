@@ -24,6 +24,7 @@ import app.olauncher.data.Constants
 import app.olauncher.data.HomeWidget
 import app.olauncher.data.Prefs
 import app.olauncher.helper.SingleLiveEvent
+import app.olauncher.helper.SlideshowPhotosWorker
 import app.olauncher.helper.Slideshows
 import app.olauncher.helper.WallpaperWorker
 import app.olauncher.helper.formattedTimeSpent
@@ -36,10 +37,9 @@ import app.olauncher.helper.isPackageInstalled
 import app.olauncher.helper.isPrivateSpaceLocked
 import app.olauncher.helper.showToast
 import app.olauncher.helper.usageStats.EventLogWrapper
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.util.Calendar
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 
@@ -72,7 +72,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val pickCustomFont = SingleLiveEvent<Unit?>()
     // Photo slideshow widget: pick photos for the slideshow with this id, or a new one for 0
     val pickSlideshowPhotos = SingleLiveEvent<Int>()
-    val slideshowPhotosChanged = SingleLiveEvent<Unit?>()
     // Home button for recents feature disabled
     // val showRecentApps = SingleLiveEvent<Unit?>()
 
@@ -364,30 +363,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Stores copies of the picked photos for a slideshow widget, adding the widget when [slideshowId]
-     * is 0 or replacing that slideshow's photos otherwise. Runs here so it survives the activity restarting.
+     * Starts copying the picked photos into a slideshow widget, adding the widget first when
+     * [slideshowId] is 0 so its progress shows on it, or replacing that slideshow's photos otherwise.
      */
     fun setSlideshowPhotos(slideshowId: Int, uris: List<Uri>) {
-        appContext.showToast(appContext.getString(R.string.adding_photos), Toast.LENGTH_LONG)
-        viewModelScope.launch {
-            val id = if (Slideshows.isSlideshow(slideshowId)) slideshowId else Slideshows.newId(prefs.homeWidgets)
-            val count = withContext(Dispatchers.IO) {
-                Slideshows.setPhotos(appContext, id, uris.take(Constants.SLIDESHOW_MAX_PHOTOS))
-            }
-            val skipped = uris.size > Constants.SLIDESHOW_MAX_PHOTOS
-            if (count == 0) {
-                appContext.showToast(appContext.getString(R.string.photos_not_added))
-                return@launch
-            }
-            if (id != slideshowId) prefs.homeWidgets += HomeWidget(id, Constants.SLIDESHOW_HEIGHT_DP)
-            appContext.showToast(
-                if (skipped) appContext.getString(R.string.photos_added_limit, count, Constants.SLIDESHOW_MAX_PHOTOS)
-                else appContext.getString(R.string.photos_added, count)
-            )
+        val id = if (Slideshows.isSlideshow(slideshowId)) slideshowId else Slideshows.newId(prefs.homeWidgets)
+        if (id != slideshowId) {
+            prefs.homeWidgets += HomeWidget(id, Constants.SLIDESHOW_HEIGHT_DP)
             refreshHome(false)
-            slideshowPhotosChanged.call()
         }
+        SlideshowPhotosWorker.start(appContext, id, uris.take(Constants.SLIDESHOW_MAX_PHOTOS))
+        appContext.showToast(
+            if (uris.size > Constants.SLIDESHOW_MAX_PHOTOS)
+                appContext.getString(R.string.photos_over_limit, Constants.SLIDESHOW_MAX_PHOTOS)
+            else appContext.getString(R.string.adding_photos),
+            Toast.LENGTH_LONG
+        )
     }
+
+    // Finished photo copying jobs whose result the home screen already showed
+    val handledSlideshowWork = mutableSetOf<UUID>()
 
     fun toggleDateTime() {
         toggleDateTime.postValue(Unit)

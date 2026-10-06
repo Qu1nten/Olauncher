@@ -29,6 +29,8 @@ import androidx.lifecycle.Observer
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import app.olauncher.MainViewModel
 import app.olauncher.R
 import app.olauncher.data.AppModel
@@ -39,6 +41,7 @@ import app.olauncher.data.next
 import app.olauncher.data.Prefs
 import app.olauncher.databinding.DialogPhotoViewerBinding
 import app.olauncher.databinding.FragmentHomeBinding
+import app.olauncher.databinding.LayoutSlideshowProgressBinding
 import app.olauncher.databinding.LayoutWidgetEditBarBinding
 import app.olauncher.helper.appUsagePermissionGranted
 import app.olauncher.helper.dpToPx
@@ -57,6 +60,7 @@ import app.olauncher.helper.openDialerApp
 import app.olauncher.helper.setPlainWallpaperByTheme
 import app.olauncher.helper.WidgetResizeOverlay
 import app.olauncher.helper.showToast
+import app.olauncher.helper.SlideshowPhotosWorker
 import app.olauncher.helper.Slideshows
 import app.olauncher.helper.SlideshowView
 import app.olauncher.listener.OnSwipeTouchListener
@@ -83,6 +87,9 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
     private var editingWidgetId: Int? = null
     // Whether slideshow widgets should be changing photos: only while the home screen is showing
     private var slideshowsRunning = false
+    // Photos copied so far and in total, for slideshows being filled, and the bars showing it
+    private val slideshowProgress = HashMap<Int, Pair<Int, Int>>()
+    private val slideshowProgressViews = HashMap<Int, LayoutSlideshowProgressBinding>()
 
     // When the whole launcher is out of view (screen off, an app opened), slideshows switch photo
     // unseen. Not on this fragment stopping: opening the app drawer or settings stops it too, while
@@ -255,12 +262,8 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         viewModel.refreshHome.observe(viewLifecycleOwner) {
             populateHomeScreen(it)
         }
-        viewModel.slideshowPhotosChanged.observe(viewLifecycleOwner) {
-            // Same widgets, new photos: rebuild so the slideshows load them
-            SlideshowView.forgetShown()
-            shownWidgets = null
-            populateWidgets()
-        }
+        WorkManager.getInstance(requireContext()).getWorkInfosByTagLiveData(SlideshowPhotosWorker.TAG)
+            .observe(viewLifecycleOwner) { onSlideshowPhotoWork(it) }
         viewModel.isOlauncherDefault.observe(viewLifecycleOwner, Observer {
             if (it != true) {
                 if (prefs.dailyWallpaper && prefs.appTheme == AppCompatDelegate.MODE_NIGHT_YES) {
@@ -484,14 +487,76 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             widgetViews += WidgetViews(widget.appWidgetId, frame, hostView)
         }
         editingWidgetId?.let { showWidgetEditViews(it) }
+        slideshowProgressViews.clear()
+        showSlideshowProgress()
         binding.widgetsLayout.isVisible = binding.widgetsLayout.childCount > 0
         if (slideshowsRunning) slideshowViews().forEach { it.resume() }
     }
 
     private fun slideshowViews() = widgetViews.mapNotNull { it.hostView as? SlideshowView }
 
+    // Tracks the jobs copying photos into slideshows: progress on the slideshow while they run,
+    // and the slideshow reloaded with its new photos when one finishes
+    private fun onSlideshowPhotoWork(works: List<WorkInfo>) {
+        slideshowProgress.clear()
+        var photosChanged = false
+        for (work in works) {
+            val slideshowId = SlideshowPhotosWorker.slideshowIdOf(work) ?: continue
+            if (!work.state.isFinished) {
+                slideshowProgress[slideshowId] = work.progress.getInt(SlideshowPhotosWorker.KEY_DONE, 0) to
+                        work.progress.getInt(SlideshowPhotosWorker.KEY_TOTAL, 0)
+                continue
+            }
+            if (!viewModel.handledSlideshowWork.add(work.id)) continue
+            when (work.state) {
+                WorkInfo.State.SUCCEEDED -> photosChanged = true
+                WorkInfo.State.FAILED -> {
+                    // A new slideshow that got no photos at all goes away again
+                    if (Slideshows.photos(requireContext(), slideshowId).isEmpty()) {
+                        prefs.homeWidgets = prefs.homeWidgets.filter { it.appWidgetId != slideshowId }
+                        photosChanged = true
+                    }
+                }
+
+                else -> Unit
+            }
+        }
+        if (photosChanged) {
+            // Finished jobs are handled now; clearing them stops them coming back after a restart
+            WorkManager.getInstance(requireContext()).pruneWork()
+            SlideshowView.forgetShown()
+            shownWidgets = null
+            populateWidgets()
+        } else showSlideshowProgress()
+    }
+
+    private fun showSlideshowProgress() {
+        for (views in widgetViews) {
+            val progress = slideshowProgress[views.appWidgetId]
+            var overlay = slideshowProgressViews[views.appWidgetId]
+            if (progress == null) {
+                overlay?.let { views.frame.removeView(it.root) }
+                slideshowProgressViews.remove(views.appWidgetId)
+                continue
+            }
+            if (overlay == null || overlay.root.parent !== views.frame) {
+                overlay = LayoutSlideshowProgressBinding.inflate(layoutInflater, views.frame, false)
+                views.frame.addView(
+                    overlay.root,
+                    FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM)
+                )
+                slideshowProgressViews[views.appWidgetId] = overlay
+            }
+            val (done, total) = progress
+            overlay.progressText.text = getString(R.string.adding_photos_progress, done, total)
+            overlay.progressBar.max = total.coerceAtLeast(1)
+            overlay.progressBar.progress = done
+        }
+    }
+
     private fun deleteWidget(appWidgetId: Int) {
         if (Slideshows.isSlideshow(appWidgetId)) {
+            SlideshowPhotosWorker.cancel(requireContext(), appWidgetId)
             Slideshows.delete(requireContext(), appWidgetId)
             prefs.removeSlideshowSeconds(appWidgetId)
         } else {
@@ -1141,6 +1206,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         editingWidgetId = null
         widgetViews.clear()
         editViews = emptyList()
+        slideshowProgressViews.clear()
         _binding = null
     }
 }

@@ -184,9 +184,12 @@
     <string name="minutes_short">%1$d min</string>
     <string name="photos">Photos</string>
     <string name="change">Change</string>
-    <string name="adding_photos">Adding photos… This can take a while for many photos from Google Drive.</string>
+    <string name="adding_photos">Adding photos… You can follow the progress on the slideshow or in the notification.</string>
     <string name="photos_added">%1$d photos added</string>
-    <string name="photos_added_limit">%1$d photos added (the most a slideshow can hold is %2$d)</string>
+    <string name="photos_added_some">%1$d of %2$d photos added</string>
+    <string name="adding_photos_progress">Adding photos %1$d / %2$d</string>
+    <string name="slideshow_notification_channel">Slideshow photos</string>
+    <string name="photos_over_limit">A slideshow holds up to %1$d photos, so only the first %1$d are added. You can follow the progress on the slideshow or in the notification.</string>
     <string name="add_photos_from">Add photos from</string>
     <string name="add_photos_from_hint">Google Drive and other folders are under Files. To take a whole folder, long press one photo, then choose Select all from the menu.</string>
     <string name="files">Files</string>

@@ -1,5 +1,6 @@
 package app.olauncher
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.appwidget.AppWidgetHost
@@ -11,6 +12,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.pm.LauncherApps
+import android.content.pm.PackageManager
 import android.content.pm.ShortcutInfo
 import android.content.res.Configuration
 import android.os.Build
@@ -94,6 +96,9 @@ class MainActivity : AppCompatActivity() {
     private val slideshowPhotoPicker = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
         if (uris.isNotEmpty()) viewModel.setSlideshowPhotos(pendingSlideshowId, uris)
     }
+    // For the notification showing progress while photos are copied into a slideshow
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {}
+
     // Android's file browser, which also reaches Google Drive and other cloud folders
     private val slideshowFilePicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) viewModel.setSlideshowPhotos(pendingSlideshowId, uris)
@@ -345,6 +350,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun pickSlideshowPhotos(slideshowId: Int) {
         pendingSlideshowId = slideshowId
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) launchPicker { notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }
         messageDialog?.dismiss()
         messageDialog = createDialog(
             title = R.string.add_photos_from,

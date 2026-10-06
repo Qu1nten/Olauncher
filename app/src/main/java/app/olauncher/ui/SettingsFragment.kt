@@ -19,6 +19,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.bundleOf
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.fragment.findNavController
+import androidx.work.WorkManager
 import app.olauncher.BuildConfig
 import app.olauncher.MainViewModel
 import app.olauncher.R
@@ -45,6 +46,7 @@ import app.olauncher.helper.OlDialog
 import app.olauncher.helper.showPopupMenu
 import app.olauncher.helper.showStatusBar
 import app.olauncher.helper.showToast
+import app.olauncher.helper.SlideshowPhotosWorker
 import app.olauncher.helper.Slideshows
 import app.olauncher.listener.DeviceAdmin
 
@@ -241,6 +243,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
 
     private fun removeAllWidgets() {
         AppWidgetHost(requireContext(), Constants.HOME_WIDGET_HOST_ID).deleteHost()
+        WorkManager.getInstance(requireContext()).cancelAllWorkByTag(SlideshowPhotosWorker.TAG)
         Slideshows.deleteAll(requireContext())
         prefs.homeWidgets = emptyList()
         requireContext().showToast(getString(R.string.widgets_removed))
