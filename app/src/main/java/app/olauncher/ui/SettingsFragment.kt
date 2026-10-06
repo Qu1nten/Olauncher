@@ -91,6 +91,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         populateTextSize()
         populateBoldFont()
         populateCustomFont()
+        populateDrawerOrder()
         populateAlignment()
         populateStatusBar()
         populateDateTime()
@@ -114,6 +115,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
             // Home button for recents feature disabled
             // R.id.homeButtonRecents -> toggleHomeButtonRecents()
             R.id.autoShowKeyboard -> toggleKeyboardText()
+            R.id.drawerOrder -> toggleDrawerOrder()
             R.id.homeAppsNum -> showHomeAppsNumMenu(view)
             R.id.homeWidgets -> viewModel.addHomeWidget.call()
             R.id.dailyWallpaperUrl -> requireContext().openUrl(prefs.dailyWallpaperUrl)
@@ -177,6 +179,7 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         binding.aboutOlauncher.setOnClickListener(this)
         binding.moreFeatures.setOnClickListener(this)
         binding.autoShowKeyboard.setOnClickListener(this)
+        binding.drawerOrder.setOnClickListener(this)
         binding.toggleLock.setOnClickListener(this)
         // Home button for recents feature disabled
         // binding.homeButtonRecents.setOnClickListener(this)
@@ -573,6 +576,15 @@ class SettingsFragment : BaseFragment(), View.OnClickListener, View.OnLongClickL
         prefs.customFontName = ""
         requireContext().showToast(getString(R.string.font_reset))
         requireActivity().recreate()
+    }
+
+    private fun toggleDrawerOrder() {
+        prefs.drawerSortByUse = !prefs.drawerSortByUse
+        populateDrawerOrder()
+    }
+
+    private fun populateDrawerOrder() {
+        binding.drawerOrder.text = getString(if (prefs.drawerSortByUse) R.string.most_used else R.string.alphabetical)
     }
 
     private fun populateCustomFont() {

@@ -193,6 +193,9 @@
     <string name="add_photos_from">Add photos from</string>
     <string name="add_photos_from_hint">Google Drive and other folders are under Files. To take a whole folder, long press one photo, then choose Select all from the menu.</string>
     <string name="files">Files</string>
+    <string name="app_drawer_order">App drawer order</string>
+    <string name="most_used">Most used</string>
+    <string name="alphabetical">A–Z</string>
     <string name="open_photo">Open</string>
     <string name="delete_photo_action">Delete</string>
     <string name="delete_photo">Delete this photo?</string>

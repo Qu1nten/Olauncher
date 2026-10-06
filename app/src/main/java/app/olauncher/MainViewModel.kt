@@ -23,6 +23,7 @@ import app.olauncher.data.AppModel
 import app.olauncher.data.Constants
 import app.olauncher.data.HomeWidget
 import app.olauncher.data.Prefs
+import app.olauncher.helper.AppLaunchCounts
 import app.olauncher.helper.SingleLiveEvent
 import app.olauncher.helper.SlideshowPhotosWorker
 import app.olauncher.helper.Slideshows
@@ -77,6 +78,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectedApp(appModel: AppModel, flag: Int) {
         if (appModel is AppModel.PrivateSpaceHeader) return
+        if (flag == Constants.FLAG_LAUNCH_APP || flag == Constants.FLAG_HIDDEN_APPS)
+            AppLaunchCounts.recordLaunch(appContext, appModel)
         when (flag) {
             Constants.FLAG_LAUNCH_APP -> {
                 when (appModel) {

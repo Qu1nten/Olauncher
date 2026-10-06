@@ -17,6 +17,7 @@ class Prefs(context: Context) {
     private val LOCK_MODE = "LOCK_MODE"
     private val HOME_APPS_NUM = "HOME_APPS_NUM"
     private val AUTO_SHOW_KEYBOARD = "AUTO_SHOW_KEYBOARD"
+    private val DRAWER_SORT_BY_USE = "DRAWER_SORT_BY_USE"
     private val KEYBOARD_MESSAGE = "KEYBOARD_MESSAGE"
     private val DAILY_WALLPAPER = "DAILY_WALLPAPER"
     private val DAILY_WALLPAPER_URL = "DAILY_WALLPAPER_URL"
@@ -146,6 +147,11 @@ class Prefs(context: Context) {
     var lockModeOn: Boolean
         get() = prefs.getBoolean(LOCK_MODE, false)
         set(value) = prefs.edit { putBoolean(LOCK_MODE, value).apply() }
+
+    // App drawer ordered by how much apps are opened, rather than alphabetically
+    var drawerSortByUse: Boolean
+        get() = prefs.getBoolean(DRAWER_SORT_BY_USE, true)
+        set(value) = prefs.edit { putBoolean(DRAWER_SORT_BY_USE, value) }
 
     var autoShowKeyboard: Boolean
         get() = prefs.getBoolean(AUTO_SHOW_KEYBOARD, true)

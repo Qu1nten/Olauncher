@@ -124,6 +124,7 @@ suspend fun getAppsList(
             }
 
             appList.sortWith(compareBy(collator) { it.appLabel })
+            if (prefs.drawerSortByUse) AppLaunchCounts.sortByUse(context, appList)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -254,6 +255,7 @@ suspend fun getPrivateSpaceApps(
                 )
             }
             appList.sortWith(compareBy(collator) { it.appLabel })
+            if (prefs.drawerSortByUse) AppLaunchCounts.sortByUse(context, appList)
         } catch (e: Exception) {
             e.printStackTrace()
         }
