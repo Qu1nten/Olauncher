@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.UserHandle
 import android.os.UserManager
+import android.widget.Toast
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
@@ -367,18 +368,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * is 0 or replacing that slideshow's photos otherwise. Runs here so it survives the activity restarting.
      */
     fun setSlideshowPhotos(slideshowId: Int, uris: List<Uri>) {
-        appContext.showToast(appContext.getString(R.string.adding_photos))
+        appContext.showToast(appContext.getString(R.string.adding_photos), Toast.LENGTH_LONG)
         viewModelScope.launch {
             val id = if (Slideshows.isSlideshow(slideshowId)) slideshowId else Slideshows.newId(prefs.homeWidgets)
             val count = withContext(Dispatchers.IO) {
                 Slideshows.setPhotos(appContext, id, uris.take(Constants.SLIDESHOW_MAX_PHOTOS))
             }
+            val skipped = uris.size > Constants.SLIDESHOW_MAX_PHOTOS
             if (count == 0) {
                 appContext.showToast(appContext.getString(R.string.photos_not_added))
                 return@launch
             }
             if (id != slideshowId) prefs.homeWidgets += HomeWidget(id, Constants.SLIDESHOW_HEIGHT_DP)
-            appContext.showToast(appContext.getString(R.string.photos_added, count))
+            appContext.showToast(
+                if (skipped) appContext.getString(R.string.photos_added_limit, count, Constants.SLIDESHOW_MAX_PHOTOS)
+                else appContext.getString(R.string.photos_added, count)
+            )
             refreshHome(false)
             slideshowPhotosChanged.call()
         }

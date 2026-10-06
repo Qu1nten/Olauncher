@@ -33,6 +33,7 @@ import app.olauncher.data.HomeWidget
 import app.olauncher.data.Prefs
 import app.olauncher.databinding.ActivityMainBinding
 import app.olauncher.helper.CustomFontInflaterFactory
+import app.olauncher.helper.createDialog
 import app.olauncher.helper.defaultHeightDp
 import app.olauncher.helper.importCustomFont
 import app.olauncher.helper.loadCustomFont
@@ -91,6 +92,10 @@ class MainActivity : AppCompatActivity() {
     // Slideshow widget whose photos are being picked; 0 while picking for a new one
     private var pendingSlideshowId = 0
     private val slideshowPhotoPicker = registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
+        if (uris.isNotEmpty()) viewModel.setSlideshowPhotos(pendingSlideshowId, uris)
+    }
+    // Android's file browser, which also reaches Google Drive and other cloud folders
+    private val slideshowFilePicker = registerForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) viewModel.setSlideshowPhotos(pendingSlideshowId, uris)
     }
 
@@ -340,8 +345,22 @@ class MainActivity : AppCompatActivity() {
 
     private fun pickSlideshowPhotos(slideshowId: Int) {
         pendingSlideshowId = slideshowId
+        messageDialog?.dismiss()
+        messageDialog = createDialog(
+            title = R.string.add_photos_from,
+            message = R.string.add_photos_from_hint,
+            neutral = R.string.photos,
+            onNeutral = {
+                launchPicker { slideshowPhotoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }
+            },
+            action = R.string.files,
+            onAction = { launchPicker { slideshowFilePicker.launch(arrayOf("image/*")) } },
+        ).apply { showRespectingStatusBar() }
+    }
+
+    private fun launchPicker(launch: () -> Unit) {
         try {
-            slideshowPhotoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            launch()
         } catch (e: Exception) {
             e.printStackTrace()
         }

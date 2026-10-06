@@ -83,23 +83,30 @@ object Slideshows {
         BitmapFactory.decodeFile(file.path, options)
     }.getOrNull()
 
-    // Decodes a picked photo upright and no larger than MAX_SIDE_PX on its longest side
-    private fun decodeResized(context: Context, uri: Uri): Bitmap? = try {
-        val resolver = context.contentResolver
-        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
-        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) null
-        else {
+    // Decodes a picked photo upright and no larger than MAX_SIDE_PX on its longest side. It's copied
+    // to a temporary file first, so a photo from Google Drive or another cloud folder downloads once.
+    private fun decodeResized(context: Context, uri: Uri): Bitmap? {
+        val temp = runCatching { File.createTempFile("slideshow", null, context.cacheDir) }.getOrNull() ?: return null
+        return try {
+            val copied = context.contentResolver.openInputStream(uri)?.use { input ->
+                temp.outputStream().use { input.copyTo(it) }
+            }
+            if (copied == null) return null
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeFile(temp.path, bounds)
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
             val options = BitmapFactory.Options().apply {
                 inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight, MAX_SIDE_PX)
             }
-            val sampled = resolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
-            val rotation = resolver.openInputStream(uri)?.use { exifRotation(it) } ?: 0
-            sampled?.let { scaleAndRotate(it, rotation) }
+            val sampled = BitmapFactory.decodeFile(temp.path, options) ?: return null
+            val rotation = temp.inputStream().use { exifRotation(it) }
+            scaleAndRotate(sampled, rotation)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        } finally {
+            temp.delete()
         }
-    } catch (e: Exception) {
-        e.printStackTrace()
-        null
     }
 
     // Largest power of two that keeps the longest side at or above target

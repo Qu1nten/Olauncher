@@ -16,7 +16,7 @@ AF stands for Ad-Free! :D
 
 > **This fork adds widgets to the home screen.** Open settings (long press on the home screen) → Home screen → Widgets → **Add**.
 > Hold a widget and drag to place it anywhere up or down the screen. Once selected, drag its edge handles to resize it. Set **Interactive** to **Double tap** so swipes pass through and only a double tap opens the widget, or **Off** to make it display-only. Long press **Add** to remove all widgets.
-> **Photo slideshow:** pick it at the top of the widget list, choose up to 100 photos, and it cycles them with a crossfade every few seconds (or each time you return home) while the home screen is showing. Tap it for the next photo.
+> **Photo slideshow:** pick it at the top of the widget list, choose up to 500 photos (from Photos, or from Files including Google Drive: long press one, then Select all), and it cycles them with a crossfade every few seconds (or each time you return home) while the home screen is showing. Tap it for the next photo.
 > Settings → Appearance → Font picks a custom .ttf/.otf font for the whole launcher.
 > Set "Apps on home screen" to 0 if you only want widgets.
 > Download the latest APK: [olauncher-widgets.apk](https://github.com/Qu1nten/olauncher/releases/latest/download/olauncher-widgets.apk) (rebuilt on every push to master).
