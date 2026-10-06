@@ -205,6 +205,13 @@ open class HomeWidgetHostView(context: Context) : AppWidgetHostView(context) {
     private var fadeAnimator: ValueAnimator? = null
     private val fadePaint = Paint(Paint.FILTER_BITMAP_FLAG)
 
+    override fun setAppWidget(appWidgetId: Int, info: AppWidgetProviderInfo?) {
+        super.setAppWidget(appWidgetId, info)
+        // Android pads widgets made for older versions; fill the frame instead, so every widget
+        // lines up with the slideshow and the clock
+        setPadding(0, 0, 0, 0)
+    }
+
     override fun updateAppWidget(remoteViews: RemoteViews?) {
         changeWithCrossfade { super.updateAppWidget(remoteViews) }
     }
