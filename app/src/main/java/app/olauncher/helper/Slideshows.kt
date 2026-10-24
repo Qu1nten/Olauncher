@@ -34,6 +34,8 @@ object Slideshows {
     private const val PARALLEL_DOWNLOADS = 4
     // Where each photo came from, one line per stored photo in the same order
     private const val SOURCES_FILE = "sources.txt"
+    // Names of the photos shown in the current round, so none repeats before all were shown
+    private const val SEEN_FILE = "seen.txt"
 
     /** Slideshows use negative ids, so they never clash with Android's app widget ids. */
     fun isSlideshow(id: Int) = id < 0
@@ -103,6 +105,18 @@ object Slideshows {
             return@withContext 0
         }
         sources.size
+    }
+
+    fun seenPhotos(context: Context, id: Int): MutableSet<String> =
+        runCatching { File(dir(context, id), SEEN_FILE).readLines().filter { it.isNotBlank() }.toMutableSet() }
+            .getOrDefault(mutableSetOf())
+
+    fun markSeen(context: Context, id: Int, photo: File) {
+        runCatching { File(dir(context, id), SEEN_FILE).appendText(photo.name + "\n") }
+    }
+
+    fun startNewRound(context: Context, id: Int) {
+        File(dir(context, id), SEEN_FILE).delete()
     }
 
     /** The original a stored photo was copied from, if it was recorded. */

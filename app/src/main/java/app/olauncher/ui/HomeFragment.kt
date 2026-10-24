@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.LauncherApps
 import android.content.res.Configuration
+import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Bundle
@@ -31,6 +32,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import app.olauncher.MainActivity
 import app.olauncher.MainViewModel
 import app.olauncher.R
 import app.olauncher.data.AppModel
@@ -47,7 +49,6 @@ import app.olauncher.helper.appUsagePermissionGranted
 import app.olauncher.helper.dpToPx
 import app.olauncher.helper.expandNotificationDrawer
 import app.olauncher.helper.getChangedAppTheme
-import app.olauncher.helper.createDialog
 import app.olauncher.helper.getColorFromAttr
 import app.olauncher.helper.getUserHandleFromString
 import app.olauncher.helper.HomeWidgetHost
@@ -564,17 +565,35 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         }
     }
 
-    // A tap on a slideshow shows its photo full screen, where it can be deleted or opened
-    private fun showSlideshowPhoto(slideshow: SlideshowView, slideshowId: Int, photo: File) {
-        val metrics = resources.displayMetrics
-        val bitmap = Slideshows.loadPhoto(photo, metrics.widthPixels, metrics.heightPixels) ?: return
-        val source = Slideshows.source(requireContext(), slideshowId, photo)
-        val dialog = Dialog(requireContext(), android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+    // A tap on a slideshow shows its photo full screen, where it can be zoomed, deleted or opened.
+    // Deleting moves on to the slideshow's next photo, which the slideshow then shows too.
+    private fun showSlideshowPhoto(slideshow: SlideshowView, slideshowId: Int, firstPhoto: File) {
+        val context = requireContext()
+        val dialog = Dialog(context, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
         val viewer = DialogPhotoViewerBinding.inflate(layoutInflater)
-        viewer.photo.setImageBitmap(bitmap)
+        var photo = firstPhoto
+        var source: Uri? = null
+
+        fun show(next: File): Boolean {
+            val metrics = resources.displayMetrics
+            val size = maxOf(metrics.widthPixels, metrics.heightPixels)
+            val bitmap = Slideshows.loadPhoto(next, size, size) ?: return false
+            photo = next
+            source = Slideshows.source(context, slideshowId, next)
+            viewer.photo.setImageBitmap(bitmap)
+            viewer.open.isVisible = source != null
+            return true
+        }
+
+        // The next photo after removing this one, or closing when there's none
+        fun removeAndShowNext() {
+            val next = removeSlideshowPhoto(slideshow, slideshowId, photo)
+            if (next == null || !show(next)) dialog.dismiss()
+        }
+
+        if (!show(firstPhoto)) return
         viewer.photo.setOnClickListener { dialog.dismiss() }
         viewer.close.setOnClickListener { dialog.dismiss() }
-        viewer.open.isVisible = source != null
         viewer.open.setOnClickListener {
             // The original, in whichever app opens photos
             val view = Intent(Intent.ACTION_VIEW)
@@ -582,42 +601,37 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if (tryStartActivity(view)) dialog.dismiss()
         }
-        viewer.delete.setOnClickListener { confirmDeletePhoto(dialog, slideshow, slideshowId, photo) }
+        viewer.delete.setOnClickListener {
+            val deleting = photo
+            viewer.delete.isEnabled = false
+            lifecycleScope.launch {
+                // Deleting from Google Drive goes through the Drive app, so not on the main thread
+                val deleted = withContext(Dispatchers.IO) { Slideshows.deleteSource(context, slideshowId, deleting) }
+                viewer.delete.isEnabled = true
+                if (deleted) removeAndShowNext()
+                else context.showToast(context.getString(R.string.photo_delete_failed), Toast.LENGTH_LONG)
+            }
+        }
+        viewer.delete.setOnLongClickListener {
+            removeAndShowNext()
+            context.showToast(context.getString(R.string.photo_removed))
+            true
+        }
+
+        // Held still while viewing, so it stays on the photo being looked at
+        slideshow.pause()
+        (activity as? MainActivity)?.setPhotoViewerOpen(true)
+        dialog.setOnDismissListener {
+            (activity as? MainActivity)?.setPhotoViewerOpen(false)
+            if (slideshowsRunning) slideshow.resume()
+        }
         dialog.setContentView(viewer.root)
         dialog.show()
     }
 
-    private fun confirmDeletePhoto(viewer: Dialog, slideshow: SlideshowView, slideshowId: Int, photo: File) {
-        val context = requireContext()
-        context.createDialog(
-            title = R.string.delete_photo,
-            message = R.string.delete_photo_message,
-            neutral = R.string.only_from_slideshow,
-            onNeutral = {
-                removeSlideshowPhoto(slideshow, slideshowId, photo)
-                viewer.dismiss()
-                context.showToast(context.getString(R.string.photo_removed))
-            },
-            action = R.string.delete_photo_action,
-            onAction = {
-                lifecycleScope.launch {
-                    // Deleting from Google Drive goes through the Drive app, so not on the main thread
-                    val deleted = withContext(Dispatchers.IO) { Slideshows.deleteSource(context, slideshowId, photo) }
-                    if (deleted) {
-                        removeSlideshowPhoto(slideshow, slideshowId, photo)
-                        viewer.dismiss()
-                        context.showToast(context.getString(R.string.photo_deleted))
-                    } else {
-                        context.showToast(context.getString(R.string.photo_delete_failed), Toast.LENGTH_LONG)
-                    }
-                }
-            },
-        ).showRespectingStatusBar()
-    }
-
-    private fun removeSlideshowPhoto(slideshow: SlideshowView, slideshowId: Int, photo: File) {
+    private fun removeSlideshowPhoto(slideshow: SlideshowView, slideshowId: Int, photo: File): File? {
         Slideshows.removePhoto(slideshow.context, slideshowId, photo)
-        slideshow.removePhoto(photo)
+        return slideshow.removePhoto(photo)
     }
 
     private fun tryStartActivity(intent: Intent): Boolean = try {

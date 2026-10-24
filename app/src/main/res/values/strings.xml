@@ -198,12 +198,8 @@
     <string name="alphabetical">A–Z</string>
     <string name="open_photo">Open</string>
     <string name="delete_photo_action">Delete</string>
-    <string name="delete_photo">Delete this photo?</string>
-    <string name="delete_photo_message">This deletes the original from its Google Drive folder (Drive normally keeps it in its trash for 30 days) and removes it from the slideshow.</string>
-    <string name="only_from_slideshow">Only from slideshow</string>
-    <string name="photo_deleted">Photo deleted</string>
     <string name="photo_removed">Removed from the slideshow</string>
-    <string name="photo_delete_failed">Couldn\'t delete the original. If it came from Google Drive, change the slideshow\'s photos once more through Files, which allows deleting.</string>
+    <string name="photo_delete_failed">Couldn\'t delete the original. Long press Delete to remove it from the slideshow only.</string>
     <string name="photos_not_added">Couldn\'t read those photos</string>
     <string name="remove_widget">Remove</string>
     <string name="font">Font</string>

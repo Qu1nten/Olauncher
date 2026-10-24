@@ -3,6 +3,11 @@ name: Build APK
 on:
   push:
   workflow_dispatch:
+    inputs:
+      new_signing_key:
+        description: Sign with a new key if the stored one is gone (installed copies must then be reinstalled)
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -34,11 +39,20 @@ jobs:
           echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > ~/.android/debug.keystore
 
       - name: Restore signing key from cache
+        id: keystore-cache
         if: env.HAS_KEYSTORE_SECRET != 'true'
         uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
           key: debug-keystore
+
+      # Without the stored key the build would be signed with a new one, and Android refuses to
+      # install that over the launcher already on the phone, so stop instead of publishing it
+      - name: Stop if the signing key is missing
+        if: env.HAS_KEYSTORE_SECRET != 'true' && steps.keystore-cache.outputs.cache-hit != 'true' && inputs.new_signing_key != true
+        run: |
+          echo "::error::The signing key is gone from the Actions cache. Add it as the DEBUG_KEYSTORE_BASE64 secret, or run this workflow by hand with 'new_signing_key' ticked (installed copies must then be reinstalled)."
+          exit 1
 
       - name: Build debug APK
         run: |

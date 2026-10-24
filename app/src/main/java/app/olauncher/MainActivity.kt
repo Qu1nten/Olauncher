@@ -78,6 +78,9 @@ class MainActivity : AppCompatActivity() {
     private var launcherAppsCallback: LauncherApps.Callback? = null
     private var messageDialog: OlDialog? = null
     private var pendingWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
+    private var photoViewerOpen = false
+    // The orientation the screens were laid out for
+    private var layoutOrientation = Configuration.ORIENTATION_UNDEFINED
 
     // Picked here rather than in settings: leaving for the file picker pops settings off the stack
     private val pickFont = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -128,6 +131,7 @@ class MainActivity : AppCompatActivity() {
         pendingSlideshowId = savedInstanceState?.getInt(KEY_PENDING_SLIDESHOW_ID, 0) ?: 0
         pendingWidgetId = savedInstanceState?.getInt(KEY_PENDING_WIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
             ?: AppWidgetManager.INVALID_APPWIDGET_ID
+        layoutOrientation = resources.configuration.orientation
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
@@ -240,8 +244,24 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
     }
 
+    /**
+     * A full screen photo may turn sideways with the phone. The launcher handles turning itself
+     * rather than restarting, so the home screen behind the photo stays as it is.
+     */
+    fun setPhotoViewerOpen(open: Boolean) {
+        photoViewerOpen = open
+        if (open) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+        else setupOrientation()
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        // Turned outside the photo viewer (tablets, or back from a sideways photo to a different
+        // way up): rebuild, so the screens use their layout for this orientation
+        if (newConfig.orientation != layoutOrientation && !photoViewerOpen) {
+            recreate()
+            return
+        }
         AppCompatDelegate.setDefaultNightMode(prefs.appTheme)
         if (prefs.dailyWallpaper && AppCompatDelegate.getDefaultNightMode() == AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM) {
             setPlainWallpaper()
@@ -492,8 +512,10 @@ class MainActivity : AppCompatActivity() {
 
     @SuppressLint("SourceLockedOrientationActivity")
     private fun setupOrientation() {
-        if (isTablet(this) || Build.VERSION.SDK_INT == Build.VERSION_CODES.O)
+        if (isTablet(this) || Build.VERSION.SDK_INT == Build.VERSION_CODES.O) {
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
             return
+        }
         // In Android 8.0, windowIsTranslucent cannot be used with screenOrientation=portrait
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
     }

@@ -18,6 +18,7 @@ import java.util.concurrent.Future
 /**
  * The launcher's own photo slideshow widget. It shares the touch handling of app widgets
  * (editing, dragging, the tap settings) and shows its photos in random order with a crossfade,
+ * never repeating one before all others were shown, even across restarts,
  * moving on every [intervalSeconds] while resumed. A tap (or double tap, per its tap setting) opens
  * the photo showing, through [onOpenPhoto]. Each time the home screen is hidden
  * it switches photo unseen, so a new one is already showing on return. It remembers what it showed,
@@ -46,8 +47,8 @@ class SlideshowView(
         setOnClickListener { currentPhoto?.let { onOpenPhoto?.invoke(it) } }
     }
     private var currentPhoto: File? = null
-    private var order = photos.shuffled()
-    private var position = -1
+    // Photos shown in this round, by name
+    private val seen = Slideshows.seenPhotos(context, slideshowId)
     private var running = false
     private var loading: Future<*>? = null
     private val advance = Runnable { showNext() }
@@ -68,11 +69,9 @@ class SlideshowView(
             showEmpty()
         } else {
             addView(image, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
-            val saved = shown[slideshowId]?.takeIf { it.order.toSet() == photos.toSet() }
+            val saved = shown[slideshowId]?.takeIf { it.photo in photos }
             if (saved != null) {
-                order = saved.order
-                position = saved.position
-                currentPhoto = saved.order.getOrNull(saved.position)
+                currentPhoto = saved.photo
                 image.setImageBitmap(saved.bitmap)
             } else {
                 // Once laid out, so the first photo is loaded at the right size
@@ -89,19 +88,18 @@ class SlideshowView(
         }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
     }
 
-    /** Drops a photo that was deleted, moving on to the next one if it was showing. */
-    fun removePhoto(photo: File) {
+    /**
+     * Drops a photo that was deleted, moving on to the next one if it was showing.
+     * Returns the photo shown next, or null when it wasn't the one showing or none are left.
+     */
+    fun removePhoto(photo: File): File? {
         photos.remove(photo)
-        val index = order.indexOf(photo)
-        if (index >= 0) {
-            order = order - photo
-            if (index <= position) position--
+        if (photos.isEmpty()) {
+            shown.remove(slideshowId)
+            showEmpty()
+            return null
         }
-        shown.remove(slideshowId)
-        when {
-            photos.isEmpty() -> showEmpty()
-            photo == currentPhoto -> showNext()
-        }
+        return if (photo == currentPhoto) showNext() else null
     }
 
     // Not an app widget, so there's no app to tell its size
@@ -128,18 +126,25 @@ class SlideshowView(
         if (running && intervalSeconds > 0) postDelayed(advance, intervalSeconds * 1000L)
     }
 
-    private fun showNext(crossfade: Boolean = true) {
-        if (photos.isEmpty()) return
-        position++
-        if (position >= order.size) {
-            // A new random order each round, not starting with the photo just shown
-            val last = order.lastOrNull()
-            order = photos.shuffled().let { if (it.size > 1 && it.first() == last) it.drop(1) + it.first() else it }
-            position = 0
+    // A random photo not shown yet this round; once all were shown, a new round starts
+    private fun chooseNext(): File? {
+        if (photos.isEmpty()) return null
+        var unseen = photos.filter { it.name !in seen && it != currentPhoto }
+        if (unseen.isEmpty()) {
+            seen.clear()
+            Slideshows.startNewRound(context, slideshowId)
+            unseen = photos.filter { it != currentPhoto }.ifEmpty { photos }
         }
-        val shownOrder = order
-        val shownPosition = position
-        val file = order[position]
+        return unseen.random().also {
+            seen += it.name
+            Slideshows.markSeen(context, slideshowId, it)
+        }
+    }
+
+    private fun showNext(crossfade: Boolean = true): File? {
+        val file = chooseNext() ?: return null
+        // Straight away, so a tap while it loads opens the photo on its way in
+        currentPhoto = file
         val targetWidth = width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
         val targetHeight = height.takeIf { it > 0 } ?: targetWidth
         loading?.cancel(false)
@@ -148,11 +153,11 @@ class SlideshowView(
             post {
                 if (crossfade) changeWithCrossfade { image.setImageBitmap(bitmap) }
                 else image.setImageBitmap(bitmap)
-                currentPhoto = file
-                shown[slideshowId] = Shown(shownOrder, shownPosition, bitmap)
+                shown[slideshowId] = Shown(file, bitmap)
             }
         })
         scheduleNext()
+        return file
     }
 
     override fun onDetachedFromWindow() {
@@ -161,7 +166,7 @@ class SlideshowView(
         super.onDetachedFromWindow()
     }
 
-    private class Shown(val order: List<File>, val position: Int, val bitmap: Bitmap)
+    private class Shown(val photo: File, val bitmap: Bitmap)
 
     companion object {
         // Photos are decoded one at a time, off the main thread
