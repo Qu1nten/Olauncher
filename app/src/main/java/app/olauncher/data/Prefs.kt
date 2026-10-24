@@ -46,6 +46,7 @@ class Prefs(context: Context) {
     private val SHOWN_ON_DAY_OF_YEAR = "SHOWN_ON_DAY_OF_YEAR"
     private val HOME_WIDGETS = "HOME_WIDGETS"
     private val SLIDESHOW_SECONDS = "SLIDESHOW_SECONDS_"
+    private val SLIDESHOW_ORDER = "SLIDESHOW_ORDER_"
     // Home button for recents feature disabled
     // private val HOME_BUTTON_SHOW_RECENTS = "HOME_BUTTON_SHOW_RECENTS"
 
@@ -181,6 +182,13 @@ class Prefs(context: Context) {
     fun setSlideshowSeconds(id: Int, seconds: Int) = prefs.edit { putInt(SLIDESHOW_SECONDS + id, seconds) }
 
     fun removeSlideshowSeconds(id: Int) = prefs.edit { remove(SLIDESHOW_SECONDS + id) }
+
+    fun getSlideshowOrder(id: Int): SlideshowOrder =
+        SlideshowOrder.entries.getOrNull(prefs.getInt(SLIDESHOW_ORDER + id, 0)) ?: SlideshowOrder.RANDOM
+
+    fun setSlideshowOrder(id: Int, order: SlideshowOrder) = prefs.edit { putInt(SLIDESHOW_ORDER + id, order.ordinal) }
+
+    fun removeSlideshowOrder(id: Int) = prefs.edit { remove(SLIDESHOW_ORDER + id) }
 
     var homeWidgets: List<HomeWidget>
         get() = prefs.getString(HOME_WIDGETS, "").orEmpty()

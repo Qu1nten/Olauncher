@@ -11,6 +11,7 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
 import app.olauncher.R
+import app.olauncher.data.SlideshowOrder
 import java.io.File
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -39,6 +40,8 @@ class SlideshowView(
             scheduleNext()
         }
 
+    var order = SlideshowOrder.RANDOM
+
     /** Called with the stored copy of the photo showing when it's tapped. */
     var onOpenPhoto: ((File) -> Unit)? = null
 
@@ -49,6 +52,8 @@ class SlideshowView(
     private var currentPhoto: File? = null
     // Photos shown in this round, by name
     private val seen = Slideshows.seenPhotos(context, slideshowId)
+    // Where an ordered slideshow continues from after a restart
+    private var lastShownName = Slideshows.lastSeenPhoto(context, slideshowId)
     private var running = false
     private var loading: Future<*>? = null
     private val advance = Runnable { showNext() }
@@ -126,19 +131,39 @@ class SlideshowView(
         if (running && intervalSeconds > 0) postDelayed(advance, intervalSeconds * 1000L)
     }
 
-    // A random photo not shown yet this round; once all were shown, a new round starts
+    // A random photo not shown yet this round, or the next by date; once all were shown, a new round starts
     private fun chooseNext(): File? {
         if (photos.isEmpty()) return null
+        if (order != SlideshowOrder.RANDOM) return nextByDate()
         var unseen = photos.filter { it.name !in seen && it != currentPhoto }
         if (unseen.isEmpty()) {
             seen.clear()
             Slideshows.startNewRound(context, slideshowId)
             unseen = photos.filter { it != currentPhoto }.ifEmpty { photos }
         }
-        return unseen.random().also {
-            seen += it.name
-            Slideshows.markSeen(context, slideshowId, it)
+        return unseen.random().also { markSeen(it) }
+    }
+
+    // Photos are stored numbered from oldest to newest, so their names give the order
+    private fun nextByDate(): File {
+        val last = currentPhoto?.name ?: lastShownName
+        val next = when (order) {
+            SlideshowOrder.NEWEST_FIRST -> photos.filter { last == null || it.name < last }.maxByOrNull { it.name }
+            else -> photos.filter { last == null || it.name > last }.minByOrNull { it.name }
         }
+        val chosen = next ?: run {
+            // Past the end: start over from the beginning
+            seen.clear()
+            Slideshows.startNewRound(context, slideshowId)
+            if (order == SlideshowOrder.NEWEST_FIRST) photos.maxBy { it.name } else photos.minBy { it.name }
+        }
+        return chosen.also { markSeen(it) }
+    }
+
+    private fun markSeen(photo: File) {
+        seen += photo.name
+        lastShownName = photo.name
+        Slideshows.markSeen(context, slideshowId, photo)
     }
 
     private fun showNext(crossfade: Boolean = true): File? {

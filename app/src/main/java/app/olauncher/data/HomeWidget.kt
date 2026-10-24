@@ -36,3 +36,13 @@ val WidgetTaps.label: Int
         WidgetTaps.DOUBLE_TAP -> R.string.double_tap
         WidgetTaps.OFF -> R.string.off
     }
+
+/** The order a slideshow widget shows its photos in. */
+enum class SlideshowOrder(@StringRes val label: Int) {
+    /** Random, without repeats until every photo was shown */
+    RANDOM(R.string.random),
+
+    /** By when the photos were added to their folder */
+    OLDEST_FIRST(R.string.oldest_first),
+    NEWEST_FIRST(R.string.newest_first),
+}

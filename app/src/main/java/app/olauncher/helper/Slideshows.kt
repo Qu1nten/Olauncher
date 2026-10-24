@@ -8,6 +8,7 @@ import android.graphics.Matrix
 import android.media.ExifInterface
 import android.net.Uri
 import android.provider.DocumentsContract
+import android.provider.MediaStore
 import app.olauncher.data.HomeWidget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -20,6 +21,8 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.InputStream
+import java.text.SimpleDateFormat
+import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -69,29 +72,35 @@ object Slideshows {
         val downloads = Semaphore(PARALLEL_DOWNLOADS)
         val decoding = Mutex()
         val done = AtomicInteger()
-        val copied = coroutineScope {
+        // When each photo was added, or null for photos that couldn't be read
+        val dates: List<Long?> = coroutineScope {
             uris.mapIndexed { index, uri ->
                 async {
-                    val ok = downloads.withPermit {
-                        val download = download(context, uri) ?: return@withPermit false
+                    val date = downloads.withPermit {
+                        val download = download(context, uri) ?: return@withPermit null
                         try {
-                            decoding.withLock { saveResized(download, File(temp, "$index.part")) }
+                            val saved = decoding.withLock { saveResized(download, File(temp, "$index.part")) }
+                            if (saved) photoDate(context, uri, download) ?: 0L else null
                         } finally {
                             download.delete()
                         }
                     }
                     onProgress(done.incrementAndGet(), uris.size)
-                    ok
+                    date
                 }
             }.awaitAll()
         }
 
-        // Number the copies in pick order, skipping photos that couldn't be read
+        // Number the copies from oldest to newest, so stepping through them in name order follows
+        // the folder; photos without a date keep their pick order, first
         val sources = mutableListOf<Uri>()
-        copied.forEachIndexed { index, ok ->
-            if (ok && File(temp, "$index.part").renameTo(File(temp, "%04d.jpg".format(sources.size))))
-                sources += uris[index]
-        }
+        dates.indices
+            .filter { dates[it] != null }
+            .sortedWith(compareBy({ dates[it] }, { it }))
+            .forEach { index ->
+                if (File(temp, "$index.part").renameTo(File(temp, "%04d.jpg".format(sources.size))))
+                    sources += uris[index]
+            }
         if (sources.isEmpty()) {
             temp.deleteRecursively()
             return@withContext 0
@@ -114,6 +123,10 @@ object Slideshows {
     fun markSeen(context: Context, id: Int, photo: File) {
         runCatching { File(dir(context, id), SEEN_FILE).appendText(photo.name + "\n") }
     }
+
+    /** The name of the photo shown last, as recorded by [markSeen]. */
+    fun lastSeenPhoto(context: Context, id: Int): String? =
+        runCatching { File(dir(context, id), SEEN_FILE).readLines().lastOrNull { it.isNotBlank() } }.getOrNull()
 
     fun startNewRound(context: Context, id: Int) {
         File(dir(context, id), SEEN_FILE).delete()
@@ -208,6 +221,32 @@ object Slideshows {
             inSampleSize = sampleSize(bounds.outWidth, bounds.outHeight, maxOf(width, height))
         }
         BitmapFactory.decodeFile(file.path, options)
+    }.getOrNull()
+
+    // When a photo was added to its folder (for Google Drive, the date Drive lists it with), or
+    // else when it was taken; null when neither is known
+    private fun photoDate(context: Context, uri: Uri, photo: File): Long? =
+        folderDate(context, uri) ?: takenDate(photo)
+
+    private fun folderDate(context: Context, uri: Uri): Long? = runCatching {
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (!cursor.moveToFirst()) return@use null
+            // Documents give milliseconds, the phone's media library seconds
+            listOf(
+                DocumentsContract.Document.COLUMN_LAST_MODIFIED to 1L,
+                MediaStore.MediaColumns.DATE_ADDED to 1000L,
+                MediaStore.MediaColumns.DATE_MODIFIED to 1000L,
+            ).firstNotNullOfOrNull { (column, toMillis) ->
+                val index = cursor.getColumnIndex(column)
+                if (index < 0 || cursor.isNull(index)) null
+                else cursor.getLong(index).takeIf { it > 0 }?.times(toMillis)
+            }
+        }
+    }.getOrNull()
+
+    private fun takenDate(photo: File): Long? = runCatching {
+        val taken = ExifInterface(photo.path).getAttribute(ExifInterface.TAG_DATETIME_ORIGINAL) ?: return null
+        SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).parse(taken)?.time
     }.getOrNull()
 
     // Copies a picked photo to a temporary file, so a photo from Google Drive or another cloud

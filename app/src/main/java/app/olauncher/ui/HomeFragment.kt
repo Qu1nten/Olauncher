@@ -38,6 +38,7 @@ import app.olauncher.R
 import app.olauncher.data.AppModel
 import app.olauncher.data.Constants
 import app.olauncher.data.HomeWidget
+import app.olauncher.data.SlideshowOrder
 import app.olauncher.data.label
 import app.olauncher.data.next
 import app.olauncher.data.Prefs
@@ -560,6 +561,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             SlideshowPhotosWorker.cancel(requireContext(), appWidgetId)
             Slideshows.delete(requireContext(), appWidgetId)
             prefs.removeSlideshowSeconds(appWidgetId)
+            prefs.removeSlideshowOrder(appWidgetId)
         } else {
             widgetHost.deleteAppWidgetId(appWidgetId)
         }
@@ -653,6 +655,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         if (Slideshows.isSlideshow(appWidgetId))
             return SlideshowView(requireContext(), appWidgetId, Slideshows.photos(requireContext(), appWidgetId)).apply {
                 intervalSeconds = prefs.getSlideshowSeconds(appWidgetId)
+                order = prefs.getSlideshowOrder(appWidgetId)
                 onOpenPhoto = { photo -> showSlideshowPhoto(this, appWidgetId, photo) }
             }
         // Skip widgets whose app is gone or unavailable; they can be cleared from settings
@@ -816,6 +819,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
         val slideshow = views.hostView as? SlideshowView
         bar.slideshowIntervalRow.isVisible = slideshow != null
         bar.slideshowPhotosRow.isVisible = slideshow != null
+        bar.slideshowOrderRow.isVisible = slideshow != null
         if (slideshow != null) {
             bar.slideshowInterval.text = intervalLabel(slideshow.intervalSeconds)
             bar.slideshowInterval.setOnClickListener {
@@ -824,6 +828,14 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
                 prefs.setSlideshowSeconds(views.appWidgetId, next)
                 slideshow.intervalSeconds = next
                 bar.slideshowInterval.text = intervalLabel(next)
+            }
+            bar.slideshowOrder.text = getString(slideshow.order.label)
+            bar.slideshowOrder.setOnClickListener {
+                val orders = SlideshowOrder.entries
+                val next = orders[(slideshow.order.ordinal + 1) % orders.size]
+                prefs.setSlideshowOrder(views.appWidgetId, next)
+                slideshow.order = next
+                bar.slideshowOrder.text = getString(next.label)
             }
             bar.slideshowPhotos.setOnClickListener {
                 stopEditingWidget()
