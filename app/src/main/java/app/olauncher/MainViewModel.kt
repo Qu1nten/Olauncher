@@ -67,7 +67,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     var isPrivateSpaceToggling = false
 
     val showDialog = SingleLiveEvent<String>()
-    val checkForMessages = SingleLiveEvent<Unit?>()
     val resetLauncherLiveData = SingleLiveEvent<Unit?>()
     val addHomeWidget = SingleLiveEvent<Unit?>()
     val pickCustomFont = SingleLiveEvent<Unit?>()

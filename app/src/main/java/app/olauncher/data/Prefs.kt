@@ -184,7 +184,8 @@ class Prefs(context: Context) {
     fun removeSlideshowSeconds(id: Int) = prefs.edit { remove(SLIDESHOW_SECONDS + id) }
 
     fun getSlideshowOrder(id: Int): SlideshowOrder =
-        SlideshowOrder.entries.getOrNull(prefs.getInt(SLIDESHOW_ORDER + id, 0)) ?: SlideshowOrder.RANDOM
+        SlideshowOrder.entries.getOrNull(prefs.getInt(SLIDESHOW_ORDER + id, SlideshowOrder.OLDEST_FIRST.ordinal))
+            ?: SlideshowOrder.OLDEST_FIRST
 
     fun setSlideshowOrder(id: Int, order: SlideshowOrder) = prefs.edit { putInt(SLIDESHOW_ORDER + id, order.ordinal) }
 

@@ -362,8 +362,6 @@ class AppDrawerFragment : BaseFragment() {
 
     private fun checkMessageAndExit() {
         findNavController().popBackStack()
-        if (flag == Constants.FLAG_LAUNCH_APP)
-            viewModel.checkForMessages.call()
     }
 
     override fun onStart() {

@@ -40,7 +40,7 @@ class SlideshowView(
             scheduleNext()
         }
 
-    var order = SlideshowOrder.RANDOM
+    var order = SlideshowOrder.OLDEST_FIRST
 
     /** Called with the stored copy of the photo showing when it's tapped. */
     var onOpenPhoto: ((File) -> Unit)? = null

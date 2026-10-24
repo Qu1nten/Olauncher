@@ -1200,11 +1200,7 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
 
             override fun onClick() {
                 super.onClick()
-                if (editingWidgetId != null) {
-                    stopEditingWidget()
-                    return
-                }
-                viewModel.checkForMessages.call()
+                if (editingWidgetId != null) stopEditingWidget()
             }
         }
     }
