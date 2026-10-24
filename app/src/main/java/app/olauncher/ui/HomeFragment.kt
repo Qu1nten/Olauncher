@@ -603,6 +603,10 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if (tryStartActivity(view)) dialog.dismiss()
         }
+        viewer.next.setOnClickListener {
+            // The slideshow moves along too, so it shows the photo last looked at
+            slideshow.showNextPhoto()?.let { show(it) }
+        }
         viewer.delete.setOnClickListener {
             val deleting = photo
             viewer.delete.isEnabled = false

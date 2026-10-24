@@ -121,6 +121,9 @@ class SlideshowView(
         removeCallbacks(advance)
     }
 
+    /** Moves on to the next photo now, as the timer would, and returns it. */
+    fun showNextPhoto(): File? = showNext()
+
     /** The home screen is out of view: switch now, without a fade, so it's new on return. */
     fun showNextUnseen() {
         showNext(crossfade = false)

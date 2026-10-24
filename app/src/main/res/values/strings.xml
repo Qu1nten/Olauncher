@@ -201,6 +201,7 @@
     <string name="most_used">Most used</string>
     <string name="alphabetical">A–Z</string>
     <string name="open_photo">Open</string>
+    <string name="next_photo">Next</string>
     <string name="delete_photo_action">Delete</string>
     <string name="photo_removed">Removed from the slideshow</string>
     <string name="photo_delete_failed">Couldn\'t delete the original. Long press Delete to remove it from the slideshow only.</string>
