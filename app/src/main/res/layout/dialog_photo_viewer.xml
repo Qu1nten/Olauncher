@@ -5,12 +5,12 @@
     android:layout_height="match_parent"
     android:background="@android:color/black">
 
-    <ImageView
+    <!-- Pinch or double tap to zoom; a single tap closes the photo -->
+    <app.olauncher.helper.ZoomImageView
         android:id="@+id/photo"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:contentDescription="@null"
-        android:scaleType="fitCenter" />
+        android:contentDescription="@null" />
 
     <LinearLayout
         android:layout_width="match_parent"
