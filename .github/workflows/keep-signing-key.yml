@@ -1,0 +1,20 @@
+name: Keep signing key
+
+# GitHub deletes cached files that go unused for 7 days. The key APKs are signed with lives in the
+# cache, and a build with a different key can't update the launcher on the phone, so use it weekly.
+# If the key is gone this fails, and GitHub sends an email about it.
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  keep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Restore signing key from cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/olauncher-signing
+          key: olauncher-signing-key
+          fail-on-cache-miss: true

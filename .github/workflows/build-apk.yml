@@ -21,17 +21,34 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       # Every build is signed with the same key, so a new APK installs over the launcher already on
-      # the phone. It comes from a repository secret: GitHub's cache lost it, which forced a reinstall.
+      # the phone. The DEBUG_KEYSTORE_BASE64 secret is used when set; otherwise the key is created once
+      # and kept in the Actions cache, which the weekly "Keep signing key" job stops from expiring.
+      - name: Restore signing key from cache
+        id: keystore-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/olauncher-signing
+          key: olauncher-signing-key
+
       - name: Signing key
+        id: signing
         env:
           DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+          CACHED: ${{ steps.keystore-cache.outputs.cache-hit }}
         run: |
-          if [ -z "$DEBUG_KEYSTORE_BASE64" ]; then
-            echo "::error::Add the signing key as the DEBUG_KEYSTORE_BASE64 repository secret (Settings > Secrets and variables > Actions)."
-            exit 1
+          if [ -n "$DEBUG_KEYSTORE_BASE64" ]; then
+            keystore="$RUNNER_TEMP/debug.keystore"
+            echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$keystore"
+          else
+            keystore="$HOME/olauncher-signing/debug.keystore"
+            if [ "$CACHED" != "true" ]; then
+              mkdir -p "$HOME/olauncher-signing"
+              keytool -genkeypair -keystore "$keystore" -storepass android -alias androiddebugkey \
+                -keypass android -keyalg RSA -keysize 2048 -validity 20000 -dname "CN=Android Debug,O=Android,C=US"
+              echo "new_key=true" >> "$GITHUB_OUTPUT"
+            fi
           fi
-          echo "$DEBUG_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/debug.keystore"
-          echo "OLAUNCHER_DEBUG_KEYSTORE=$RUNNER_TEMP/debug.keystore" >> "$GITHUB_ENV"
+          echo "OLAUNCHER_DEBUG_KEYSTORE=$keystore" >> "$GITHUB_ENV"
 
       - name: Build debug APK
         run: |
@@ -53,6 +70,8 @@ jobs:
           target_commitish: ${{ github.sha }}
           make_latest: true
           body: |
+            ${{ steps.signing.outputs.new_key == 'true' && '**Signed with a new key: uninstall the launcher before installing this build.** Builds after it install over it again.' || '' }}
+
             Built from ${{ github.sha }}.
             Install olauncher-widgets.apk below. Newer builds install over older ones.
           files: olauncher-widgets.apk
