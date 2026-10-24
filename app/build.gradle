@@ -24,6 +24,20 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        // Builds on GitHub sign with one fixed key (the DEBUG_KEYSTORE_BASE64 secret), so every new
+        // APK installs over the launcher already on the phone
+        debug {
+            def ciKeystore = System.getenv("OLAUNCHER_DEBUG_KEYSTORE")
+            if (ciKeystore) {
+                storeFile file(ciKeystore)
+                storePassword "android"
+                keyAlias "androiddebugkey"
+                keyPassword "android"
+            }
+        }
+    }
+
     buildTypes {
         release {
             debuggable false
