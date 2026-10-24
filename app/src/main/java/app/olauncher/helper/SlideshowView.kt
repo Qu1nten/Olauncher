@@ -54,6 +54,8 @@ class SlideshowView(
     private val seen = Slideshows.seenPhotos(context, slideshowId)
     // Where an ordered slideshow continues from after a restart
     private var lastShownName = Slideshows.lastSeenPhoto(context, slideshowId)
+    // Photos shown, so Previous can go back through them, kept while the launcher runs
+    private val history = histories.getOrPut(slideshowId) { History() }
     private var running = false
     private var loading: Future<*>? = null
     private val advance = Runnable { showNext() }
@@ -78,6 +80,7 @@ class SlideshowView(
             if (saved != null) {
                 currentPhoto = saved.photo
                 image.setImageBitmap(saved.bitmap)
+                rememberShowing()
             } else {
                 // Once laid out, so the first photo is loaded at the right size
                 post { showNext() }
@@ -99,6 +102,11 @@ class SlideshowView(
      */
     fun removePhoto(photo: File): File? {
         photos.remove(photo)
+        val inHistory = history.photos.indexOf(photo)
+        if (inHistory >= 0) {
+            history.photos.removeAt(inHistory)
+            if (inHistory <= history.index) history.index--
+        }
         if (photos.isEmpty()) {
             shown.remove(slideshowId)
             showEmpty()
@@ -123,6 +131,29 @@ class SlideshowView(
 
     /** Moves on to the next photo now, as the timer would, and returns it. */
     fun showNextPhoto(): File? = showNext()
+
+    /** Whether [showPreviousPhoto] has a photo to go back to. */
+    fun hasPreviousPhoto(): Boolean =
+        photos.size > 1 && (history.index > 0 || order != SlideshowOrder.RANDOM)
+
+    /**
+     * Goes back to the photo shown before, and returns it. Before the first one shown, a slideshow in
+     * date order goes on to earlier photos; a random one has nothing further back.
+     */
+    fun showPreviousPhoto(): File? {
+        if (photos.size < 2) return null
+        rememberShowing()
+        val file = if (history.index > 0) {
+            history.photos[--history.index]
+        } else {
+            val previous = previousByDate() ?: return null
+            history.photos.add(0, previous)
+            history.index = 0
+            previous
+        }
+        show(file, crossfade = true)
+        return file
+    }
 
     /** The home screen is out of view: switch now, without a fade, so it's new on return. */
     fun showNextUnseen() {
@@ -163,6 +194,18 @@ class SlideshowView(
         return chosen.also { markSeen(it) }
     }
 
+    // The photo before the one showing in date order, going round from the first to the last
+    private fun previousByDate(): File? {
+        val current = currentPhoto?.name ?: return null
+        return when (order) {
+            SlideshowOrder.RANDOM -> null
+            SlideshowOrder.NEWEST_FIRST -> photos.filter { it.name > current }.minByOrNull { it.name }
+                ?: photos.minByOrNull { it.name }
+            SlideshowOrder.OLDEST_FIRST -> photos.filter { it.name < current }.maxByOrNull { it.name }
+                ?: photos.maxByOrNull { it.name }
+        }
+    }
+
     private fun markSeen(photo: File) {
         seen += photo.name
         lastShownName = photo.name
@@ -170,7 +213,30 @@ class SlideshowView(
     }
 
     private fun showNext(crossfade: Boolean = true): File? {
-        val file = chooseNext() ?: return null
+        rememberShowing()
+        val file = if (history.index < history.photos.lastIndex) {
+            // After going back, Next first goes forward again through what was shown
+            history.photos[++history.index]
+        } else {
+            val chosen = chooseNext() ?: return null
+            history.photos += chosen
+            if (history.photos.size > HISTORY_SIZE) history.photos.removeAt(0)
+            history.index = history.photos.lastIndex
+            chosen
+        }
+        show(file, crossfade)
+        return file
+    }
+
+    // Starts the history with the photo showing, when it has none yet
+    private fun rememberShowing() {
+        val showing = currentPhoto ?: return
+        if (history.photos.isNotEmpty()) return
+        history.photos += showing
+        history.index = 0
+    }
+
+    private fun show(file: File, crossfade: Boolean) {
         // Straight away, so a tap while it loads opens the photo on its way in
         currentPhoto = file
         val targetWidth = width.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
@@ -185,7 +251,6 @@ class SlideshowView(
             }
         })
         scheduleNext()
-        return file
     }
 
     override fun onDetachedFromWindow() {
@@ -196,14 +261,22 @@ class SlideshowView(
 
     private class Shown(val photo: File, val bitmap: Bitmap)
 
+    private class History(val photos: MutableList<File> = mutableListOf(), var index: Int = -1)
+
     companion object {
+        private const val HISTORY_SIZE = 200
+
         // Photos are decoded one at a time, off the main thread
         private val loader = Executors.newSingleThreadExecutor()
 
-        // What each slideshow last showed, by its id, kept while the launcher runs
+        // What each slideshow last showed and showed before, by its id, kept while the launcher runs
         private val shown = HashMap<Int, Shown>()
+        private val histories = HashMap<Int, History>()
 
         /** Starts slideshows afresh, e.g. after their photos were replaced. */
-        fun forgetShown() = shown.clear()
+        fun forgetShown() {
+            shown.clear()
+            histories.clear()
+        }
     }
 }

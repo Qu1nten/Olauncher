@@ -584,6 +584,9 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
             source = Slideshows.source(context, slideshowId, next)
             viewer.photo.setImageBitmap(bitmap)
             viewer.open.isVisible = source != null
+            // Faded when there's nothing to go back to
+            val canGoBack = slideshow.hasPreviousPhoto()
+            listOf(viewer.previous, viewer.previousSide).forEach { it.alpha = if (canGoBack) 1f else 0.4f }
             return true
         }
 
@@ -603,9 +606,20 @@ class HomeFragment : BaseFragment(), View.OnClickListener, View.OnLongClickListe
                 .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             if (tryStartActivity(view)) dialog.dismiss()
         }
-        viewer.next.setOnClickListener {
-            // The slideshow moves along too, so it shows the photo last looked at
-            slideshow.showNextPhoto()?.let { show(it) }
+        // The slideshow moves along too, so it shows the photo last looked at
+        listOf(viewer.next, viewer.nextSide).forEach { button ->
+            button.setOnClickListener { slideshow.showNextPhoto()?.let { show(it) } }
+        }
+        listOf(viewer.previous, viewer.previousSide).forEach { button ->
+            button.setOnClickListener { slideshow.showPreviousPhoto()?.let { show(it) } }
+        }
+        // Sideways, previous and next sit at the middle of the left and right edges instead of in the bar
+        viewer.root.addOnLayoutChangeListener { root, _, _, _, _, _, _, _, _ ->
+            val sideways = root.width > root.height
+            viewer.previous.isVisible = !sideways
+            viewer.next.isVisible = !sideways
+            viewer.previousSide.isVisible = sideways
+            viewer.nextSide.isVisible = sideways
         }
         viewer.delete.setOnClickListener {
             val deleting = photo

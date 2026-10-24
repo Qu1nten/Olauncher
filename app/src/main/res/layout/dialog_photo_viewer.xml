@@ -48,6 +48,17 @@
             android:text="@string/open_photo"
             android:textColor="@android:color/white" />
 
+        <!-- Upright: previous and next sit in this bar; sideways they move to the screen's sides -->
+        <TextView
+            android:id="@+id/previous"
+            style="@style/TextSmallBold"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:focusable="true"
+            android:padding="12dp"
+            android:text="@string/previous_photo"
+            android:textColor="@android:color/white" />
+
         <TextView
             android:id="@+id/next"
             style="@style/TextSmallBold"
@@ -68,4 +79,30 @@
             android:text="@string/close"
             android:textColor="@android:color/white" />
     </LinearLayout>
+
+    <TextView
+        android:id="@+id/previousSide"
+        style="@style/TextSmallBold"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start|center_vertical"
+        android:background="#80000000"
+        android:focusable="true"
+        android:padding="16dp"
+        android:text="@string/previous_photo"
+        android:textColor="@android:color/white"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/nextSide"
+        style="@style/TextSmallBold"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="end|center_vertical"
+        android:background="#80000000"
+        android:focusable="true"
+        android:padding="16dp"
+        android:text="@string/next_photo"
+        android:textColor="@android:color/white"
+        android:visibility="gone" />
 </FrameLayout>
